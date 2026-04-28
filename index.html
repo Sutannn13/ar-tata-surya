@@ -258,17 +258,18 @@
           </div>
         </div>
 
-        <!-- Planet Info Panel -->
+        <!-- Planet Info Panel (compact by default) -->
         <div class="planet-info-panel" id="planet-info-panel">
           <div class="planet-info-header">
             <div class="planet-info-color" id="planet-info-color"></div>
-            <div>
+            <div class="planet-info-header-text">
               <h3 id="planet-info-name">Pilih Planet</h3>
               <span id="planet-info-order" class="planet-info-order"></span>
             </div>
+            <button id="btn-expand-panel" class="btn-expand-panel hidden">▲ Detail</button>
           </div>
-          <p id="planet-info-desc" class="planet-info-desc">Ketuk salah satu planet di atas untuk melihat informasinya</p>
-          <div id="planet-info-fact" class="planet-info-fact hidden">
+          <p id="planet-info-desc" class="planet-info-desc">Ketuk planet di layar atau pilih dari daftar di atas</p>
+          <div id="planet-info-fact" class="planet-info-fact">
             <span class="fact-label">💡 Fakta Menarik</span>
             <p id="planet-info-fact-text"></p>
           </div>
