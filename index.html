@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>AR Tata Surya - Media Pembelajaran Interaktif</title>
+    <meta name="description" content="Aplikasi Web Augmented Reality Tata Surya sebagai media pembelajaran interaktif menggunakan A-Frame dan AR.js. Jelajahi planet-planet di tata surya melalui kamera smartphone Anda." />
+    <meta name="keywords" content="AR, Augmented Reality, Tata Surya, Solar System, A-Frame, AR.js, Pembelajaran" />
+    <meta name="author" content="Sutan Arlie Johan" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪐</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/styles/main.css" />
+  </head>
+  <body>
+    <!-- ==================== LANDING PAGE ==================== -->
+    <div id="landing-page">
+      <!-- Animated Background -->
+      <div id="stars-bg">
+        <div class="stars-layer stars-small"></div>
+        <div class="stars-layer stars-medium"></div>
+        <div class="stars-layer stars-large"></div>
+      </div>
+
+      <!-- Hero Section -->
+      <main class="landing-container">
+        <div class="hero-content">
+          <!-- Logo / Icon -->
+          <div class="hero-icon">
+            <span class="planet-emoji">🪐</span>
+            <div class="hero-icon-ring"></div>
+          </div>
+
+          <h1 class="hero-title">
+            <span class="title-gradient">AR Tata Surya</span>
+          </h1>
+          <p class="hero-subtitle">Media Pembelajaran Interaktif</p>
+          <p class="hero-description">
+            Jelajahi keajaiban tata surya melalui teknologi Augmented Reality. 
+            Arahkan kamera smartphone ke marker Hiro dan saksikan planet-planet 
+            mengorbit di atas meja Anda.
+          </p>
+
+          <!-- CTA Buttons -->
+          <div class="cta-group">
+            <button id="btn-start-ar" class="btn-primary">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+              Mulai AR
+            </button>
+            <button id="btn-marker-guide" class="btn-secondary">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              Panduan Marker
+            </button>
+          </div>
+
+          <!-- Features -->
+          <div class="features-grid">
+            <div class="feature-card">
+              <div class="feature-icon">📱</div>
+              <h3>Scan & Lihat</h3>
+              <p>Arahkan kamera ke marker Hiro untuk memunculkan tata surya 3D</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">🌍</div>
+              <h3>8 Planet</h3>
+              <p>Mercury hingga Neptune lengkap dengan orbit dan rotasi</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">ℹ️</div>
+              <h3>Info Planet</h3>
+              <p>Pilih planet untuk melihat informasi dan fakta menarik</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon">🎮</div>
+              <h3>Interaktif</h3>
+              <p>Kontrol orbit, zoom, dan jelajahi tata surya sesuka hati</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- How to Use Section -->
+        <section class="how-to-section">
+          <h2 class="section-title">Cara Menggunakan</h2>
+          <div class="steps-container">
+            <div class="step-item">
+              <div class="step-number">1</div>
+              <div class="step-content">
+                <h4>Siapkan Marker</h4>
+                <p>Print atau tampilkan marker Hiro di layar lain</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-number">2</div>
+              <div class="step-content">
+                <h4>Klik "Mulai AR"</h4>
+                <p>Izinkan akses kamera saat diminta</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-number">3</div>
+              <div class="step-content">
+                <h4>Arahkan Kamera</h4>
+                <p>Scan marker Hiro dengan kamera smartphone</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-number">4</div>
+              <div class="step-content">
+                <h4>Jelajahi!</h4>
+                <p>Pilih planet dan lihat informasinya</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- Footer -->
+      <footer class="landing-footer">
+        <p>Tugas Mata Kuliah Virtual dan Augmented Reality</p>
+        <p class="footer-tech">A-Frame &bull; AR.js &bull; Vite &bull; TypeScript &bull; Tailwind CSS</p>
+      </footer>
+    </div>
+
+    <!-- ==================== MARKER GUIDE MODAL ==================== -->
+    <div id="marker-modal" class="modal-overlay hidden">
+      <div class="modal-content">
+        <button id="btn-close-modal" class="modal-close">&times;</button>
+        <h2 class="modal-title">📋 Panduan Marker Hiro</h2>
+        <div class="modal-body">
+          <div class="marker-preview">
+            <img 
+              src="https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/images/hiro.png" 
+              alt="Marker Hiro"
+              class="marker-image"
+              id="marker-image"
+            />
+          </div>
+          <div class="marker-instructions">
+            <h3>Cara Mendapatkan Marker:</h3>
+            <ol>
+              <li><strong>Print</strong> — Simpan gambar marker di atas, lalu print di kertas putih ukuran A4 atau A5</li>
+              <li><strong>Layar lain</strong> — Tampilkan gambar marker di layar laptop/tablet/HP lain</li>
+              <li><strong>Download</strong> — <a href="https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/images/hiro.png" target="_blank" rel="noopener">Klik di sini</a> untuk download gambar marker</li>
+            </ol>
+            <h3>Tips:</h3>
+            <ul>
+              <li>Pastikan marker tercetak jelas dan tidak terpotong</li>
+              <li>Ukuran minimal marker 8 × 8 cm</li>
+              <li>Hindari pantulan cahaya pada marker</li>
+              <li>Jaga jarak kamera 15–40 cm dari marker</li>
+              <li>Pastikan pencahayaan cukup terang</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== AR PAGE ==================== -->
+    <div id="ar-page" class="hidden">
+      <!-- Loading Overlay -->
+      <div id="ar-loading" class="ar-loading-overlay">
+        <div class="loading-content">
+          <div class="loading-spinner"></div>
+          <h2>Memuat AR...</h2>
+          <p>Izinkan akses kamera saat diminta</p>
+          <p class="loading-hint">Arahkan kamera ke marker Hiro</p>
+        </div>
+      </div>
+
+      <!-- AR Scene (will be injected by JS) -->
+      <div id="ar-scene-container"></div>
+
+      <!-- AR UI Overlay -->
+      <div id="ar-ui" class="ar-ui-overlay">
+        <!-- Top Bar -->
+        <div class="ar-topbar">
+          <button id="btn-back" class="ar-btn ar-btn-back" title="Kembali">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+          </button>
+          <div class="ar-topbar-title">
+            <span class="ar-topbar-icon">🪐</span>
+            AR Tata Surya
+          </div>
+          <div class="ar-topbar-spacer"></div>
+        </div>
+
+        <!-- Planet Selector -->
+        <div class="planet-selector" id="planet-selector">
+          <div class="planet-chips" id="planet-chips">
+            <!-- Chips will be generated by JS -->
+          </div>
+        </div>
+
+        <!-- Planet Info Panel -->
+        <div class="planet-info-panel" id="planet-info-panel">
+          <div class="planet-info-header">
+            <div class="planet-info-color" id="planet-info-color"></div>
+            <div>
+              <h3 id="planet-info-name">Pilih Planet</h3>
+              <span id="planet-info-order" class="planet-info-order"></span>
+            </div>
+          </div>
+          <p id="planet-info-desc" class="planet-info-desc">Ketuk salah satu planet di atas untuk melihat informasinya</p>
+          <div id="planet-info-fact" class="planet-info-fact hidden">
+            <span class="fact-label">💡 Fakta Menarik</span>
+            <p id="planet-info-fact-text"></p>
+          </div>
+        </div>
+
+        <!-- Bottom Controls -->
+        <div class="ar-controls">
+          <button id="btn-zoom-out" class="ar-btn" title="Zoom Out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              <line x1="8" y1="11" x2="14" y2="11"/>
+            </svg>
+          </button>
+          <button id="btn-pause" class="ar-btn ar-btn-main" title="Pause / Play">
+            <svg id="icon-pause" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+            </svg>
+            <svg id="icon-play" viewBox="0 0 24 24" fill="currentColor" class="hidden">
+              <polygon points="5,3 19,12 5,21"/>
+            </svg>
+          </button>
+          <button id="btn-reset" class="ar-btn" title="Reset">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+            </svg>
+          </button>
+          <button id="btn-zoom-in" class="ar-btn" title="Zoom In">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              <line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
