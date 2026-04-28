@@ -501,7 +501,11 @@ body {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: transparent;
+  background: #000;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh; /* dynamic viewport height for mobile */
 }
 
 /* AR Loading */
@@ -701,16 +705,24 @@ body {
 /* AR UI Overlay */
 .ar-ui-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 100;
   pointer-events: none;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .ar-ui-overlay > * {
   pointer-events: auto;
+  flex-shrink: 0;
 }
 
 /* Top Bar */
@@ -836,21 +848,23 @@ body {
   margin: 0 0.75rem;
   background: var(--glass-bg);
   backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
   padding: 0.6rem 1rem;
   transition: all 0.3s ease;
-  max-height: 64px;
+  max-height: 70px;
   overflow: hidden;
 }
 
 .planet-info-panel.has-planet {
-  max-height: 80px;
+  max-height: 85px;
 }
 
 .planet-info-panel.expanded {
-  max-height: 500px;
+  max-height: 50vh;
   padding: 0.8rem 1rem;
+  overflow-y: auto;
 }
 
 .planet-info-header {
@@ -910,11 +924,20 @@ body {
   color: var(--color-text-secondary);
   line-height: 1.5;
   margin-top: 0.4rem;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planet-info-panel.has-planet .planet-info-desc {
   display: none;
 }
 
 .planet-info-panel.expanded .planet-info-desc {
   display: block;
+  white-space: normal;
+  overflow: visible;
 }
 
 .planet-info-fact {
@@ -985,25 +1008,50 @@ body {
 }
 
 /* ===== A-Frame Scene Override ===== */
+#ar-scene-container {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  z-index: 51;
+  overflow: hidden;
+}
+
 a-scene {
   position: fixed !important;
-  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
   z-index: 51 !important;
 }
 
 a-scene canvas.a-canvas,
 .a-canvas {
   position: fixed !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  object-fit: cover !important;
 }
 
-a-scene video {
+a-scene video,
+#ar-scene-container video {
   position: fixed !important;
-  inset: 0 !important;
-  z-index: 50 !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  z-index: 0 !important;
   object-fit: cover !important;
+  -webkit-transform: scaleX(-1) !important;
+  transform: none !important;
 }
 
 /* Hide A-Frame default UI */
@@ -1037,6 +1085,70 @@ a-scene video {
   }
 }
 
+/* Mobile AR layout fixes */
+@media (max-width: 480px) {
+  .planet-info-panel {
+    margin: 0 0.5rem;
+    padding: 0.5rem 0.75rem;
+    max-height: 65px;
+  }
+
+  .planet-info-panel.has-planet {
+    max-height: 80px;
+  }
+
+  .planet-info-panel.expanded {
+    max-height: 45vh;
+  }
+
+  .planet-info-header h3 {
+    font-size: 0.9rem;
+  }
+
+  .planet-info-color {
+    width: 26px;
+    height: 26px;
+  }
+
+  .planet-info-desc {
+    font-size: 0.75rem;
+  }
+
+  .planet-chip {
+    padding: 0.4rem 0.7rem;
+    font-size: 0.75rem;
+  }
+
+  .ar-controls {
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .ar-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .ar-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .ar-btn-main {
+    width: 50px;
+    height: 50px;
+  }
+
+  .ar-btn-main svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .planet-selector {
+    padding: 0 0.5rem;
+  }
+}
+
 @media (max-width: 380px) {
   .hero-title {
     font-size: 2rem;
@@ -1050,5 +1162,29 @@ a-scene video {
   .btn-primary,
   .btn-secondary {
     justify-content: center;
+  }
+}
+
+/* Tablet landscape */
+@media (min-width: 768px) and (orientation: landscape) {
+  .planet-info-panel {
+    max-width: 500px;
+    margin: 0 auto;
+  }
+
+  .planet-selector {
+    max-width: 700px;
+    margin: 0 auto;
+  }
+}
+
+/* iOS safe area */
+@supports (padding: max(0px)) {
+  .ar-topbar {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+
+  .ar-controls {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 }

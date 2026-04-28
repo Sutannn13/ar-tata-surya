@@ -1,14 +1,16 @@
 /**
- * Solar System Builder v2
+ * Solar System Builder v3
  * 
- * Fitur baru:
- * - Ambient + directional light agar planet terang
- * - Semua planet shader:flat agar cerah di AR
- * - Default scale ~0.5 dan posisi Y terangkat
- * - Drag/pan gesture untuk geser tata surya
+ * Fixes & Improvements:
+ * - Texture loading with absolute base URL to prevent 404 on mobile
+ * - Proper material handling to prevent black planets (clearHighlight fix)
+ * - Improved shader:flat usage with correct emissive handling
+ * - Camera video element fix for mobile fullscreen
+ * - Better cross-device compatibility (Android, iOS, desktop)
+ * - Drag/pan gesture for moving solar system
  * - Tap/click planet 3D via raycaster
- * - Smooth focus/zoom ke planet terpilih
- * - Camera stream cleanup saat destroy
+ * - Smooth focus/zoom to selected planet
+ * - Camera stream cleanup on destroy
  */
 
 import { planets, sunData, type Planet } from '../data/planets';
@@ -49,6 +51,18 @@ let dragStartX = 0;
 let dragStartY = 0;
 let dragStartOffsetX = 0;
 let dragStartOffsetZ = 0;
+
+// Store original materials so we can restore them after highlight
+const originalMaterials: Map<string, string> = new Map();
+
+/**
+ * Get the base URL for textures — works in both dev and production
+ * Uses import.meta.url or falls back to location.origin
+ */
+function getTextureBaseUrl(): string {
+  // In Vite, files in /public are served at root
+  return window.location.origin + '/';
+}
 
 /**
  * Register planet tap callback
@@ -97,7 +111,7 @@ function buildScene(onProgress?: ProgressCallback): void {
   sceneEl = document.createElement('a-scene');
   sceneEl.setAttribute('embedded', '');
   sceneEl.setAttribute('arjs', 'sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;');
-  sceneEl.setAttribute('renderer', 'logarithmicDepthBuffer: true; precision: medium;');
+  sceneEl.setAttribute('renderer', 'logarithmicDepthBuffer: true; precision: mediump; alpha: true; antialias: true;');
   sceneEl.setAttribute('vr-mode-ui', 'enabled: false');
 
   // Marker
@@ -109,20 +123,28 @@ function buildScene(onProgress?: ProgressCallback): void {
   marker.setAttribute('smoothThreshold', '2');
 
   // ===== Lighting =====
-  // Ambient light — terang merata
+  // Ambient light — terang merata, cukup tinggi agar planet tidak gelap
   const ambientLight = document.createElement('a-light');
   ambientLight.setAttribute('type', 'ambient');
   ambientLight.setAttribute('color', '#FFF');
-  ambientLight.setAttribute('intensity', '1.5');
+  ambientLight.setAttribute('intensity', '1.8');
   marker.appendChild(ambientLight);
 
   // Directional light — beri dimensi
   const dirLight = document.createElement('a-light');
   dirLight.setAttribute('type', 'directional');
   dirLight.setAttribute('color', '#FFF8E7');
-  dirLight.setAttribute('intensity', '0.6');
+  dirLight.setAttribute('intensity', '0.8');
   dirLight.setAttribute('position', '1 2 1');
   marker.appendChild(dirLight);
+
+  // Secondary directional light dari bawah — kurangi shadow gelap
+  const dirLight2 = document.createElement('a-light');
+  dirLight2.setAttribute('type', 'directional');
+  dirLight2.setAttribute('color', '#E8E0FF');
+  dirLight2.setAttribute('intensity', '0.4');
+  dirLight2.setAttribute('position', '-1 -1 -1');
+  marker.appendChild(dirLight2);
 
   // Solar system root
   solarSystemRoot = document.createElement('a-entity');
@@ -154,23 +176,69 @@ function buildScene(onProgress?: ProgressCallback): void {
   // Scene loaded
   sceneEl.addEventListener('loaded', () => {
     setupDragGesture();
+    fixCameraVideoElement();
     setTimeout(() => { onProgress?.('scene-ready'); }, 800);
   });
+}
+
+/**
+ * Fix camera video element to fill the entire viewport on all devices
+ * AR.js creates a <video> element — we need to ensure it covers the full screen
+ */
+function fixCameraVideoElement(): void {
+  // AR.js inserts a video element — fix its styling
+  const fixVideo = () => {
+    const videos = document.querySelectorAll('video');
+    videos.forEach((video) => {
+      video.style.position = 'fixed';
+      video.style.top = '0';
+      video.style.left = '0';
+      video.style.width = '100vw';
+      video.style.height = '100vh';
+      video.style.objectFit = 'cover';
+      video.style.zIndex = '0';
+      video.setAttribute('playsinline', '');
+      video.setAttribute('webkit-playsinline', '');
+    });
+  };
+
+  // Fix immediately and also watch for late-arriving video elements
+  fixVideo();
+  setTimeout(fixVideo, 500);
+  setTimeout(fixVideo, 1500);
+  setTimeout(fixVideo, 3000);
+
+  // MutationObserver to catch dynamically added video elements
+  const observer = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes as any) {
+        if (node instanceof HTMLVideoElement || (node instanceof HTMLElement && node.querySelector?.('video'))) {
+          fixVideo();
+        }
+      }
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  // Store observer ref for cleanup
+  (window as any).__arVideoObserver = observer;
 }
 
 /**
  * Build Sun entity
  */
 function buildSun(parent: HTMLElement): void {
+  const baseUrl = getTextureBaseUrl();
   const sun = document.createElement('a-sphere');
   sun.setAttribute('id', 'planet-sun');
   sun.setAttribute('radius', String(sunData.radius));
   sun.setAttribute('position', '0 0 0');
   sun.setAttribute('self-rotation', `speed: 10; paused: ${isPaused}`);
 
-  // Shader flat + emissive agar matahari menyala terang
-  sun.setAttribute('material', `color: ${sunData.color}; shader: flat; emissive: ${sunData.color}; emissiveIntensity: 0.5;`);
-  tryLoadTexture(sun, sunData.texturePath, sunData.color);
+  // Shader flat + bright color agar matahari menyala terang
+  const sunMaterial = `color: ${sunData.color}; shader: flat;`;
+  sun.setAttribute('material', sunMaterial);
+  tryLoadTexture(sun, baseUrl + sunData.texturePath, sunData.color, 'sun');
 
   // Point light dari matahari
   const light = document.createElement('a-light');
@@ -187,6 +255,7 @@ function buildSun(parent: HTMLElement): void {
  * Build planet orbit group
  */
 function buildPlanetGroup(parent: HTMLElement, planet: Planet): void {
+  const baseUrl = getTextureBaseUrl();
   const group = document.createElement('a-entity');
   group.setAttribute('id', `orbit-group-${planet.id}`);
 
@@ -215,9 +284,10 @@ function buildPlanetGroup(parent: HTMLElement, planet: Planet): void {
   sphere.setAttribute('position', `${planet.orbitRadius} 0 0`);
   sphere.setAttribute('self-rotation', `speed: ${planet.rotationSpeed * 50}; paused: ${isPaused}`);
 
-  // Shader flat agar planet terlihat cerah
-  sphere.setAttribute('material', `color: ${planet.color}; shader: flat;`);
-  tryLoadTexture(sphere, planet.texturePath, planet.color);
+  // Shader flat agar planet terlihat cerah di AR
+  const planetMaterial = `color: ${planet.color}; shader: flat;`;
+  sphere.setAttribute('material', planetMaterial);
+  tryLoadTexture(sphere, baseUrl + planet.texturePath, planet.color, planet.id);
 
   // Click/tap event
   sphere.addEventListener('click', () => {
@@ -237,7 +307,7 @@ function buildPlanetGroup(parent: HTMLElement, planet: Planet): void {
     ring.setAttribute('position', `${planet.orbitRadius} 0 0`);
     ring.setAttribute('segments-theta', '64');
     ring.setAttribute('material', 'side: double; transparent: true; shader: flat;');
-    tryLoadRingTexture(ring);
+    tryLoadRingTexture(ring, baseUrl);
     pivot.appendChild(ring);
   }
 
@@ -247,26 +317,34 @@ function buildPlanetGroup(parent: HTMLElement, planet: Planet): void {
 
 /**
  * Load texture — always use shader:flat for brightness in AR
+ * Uses absolute URL and stores original material for safe highlight/clear
  */
-function tryLoadTexture(el: HTMLElement, path: string, fallbackColor: string): void {
+function tryLoadTexture(el: HTMLElement, absolutePath: string, fallbackColor: string, planetId: string): void {
   const img = new Image();
+  img.crossOrigin = 'anonymous';
   img.onload = () => {
-    el.setAttribute('material', `src: url(${path}); shader: flat;`);
+    const mat = `src: url(${absolutePath}); shader: flat;`;
+    el.setAttribute('material', mat);
+    originalMaterials.set(planetId, mat);
   };
   img.onerror = () => {
-    console.warn(`Texture not found: ${path}, using fallback color: ${fallbackColor}`);
-    el.setAttribute('material', `color: ${fallbackColor}; shader: flat;`);
+    console.warn(`Texture not found: ${absolutePath}, using fallback color: ${fallbackColor}`);
+    const mat = `color: ${fallbackColor}; shader: flat;`;
+    el.setAttribute('material', mat);
+    originalMaterials.set(planetId, mat);
   };
-  img.src = path;
+  img.src = absolutePath;
 }
 
-function tryLoadRingTexture(el: HTMLElement): void {
+function tryLoadRingTexture(el: HTMLElement, baseUrl: string): void {
+  const ringPath = baseUrl + 'textures/saturn-ring.png';
   const img = new Image();
+  img.crossOrigin = 'anonymous';
   img.onload = () => {
-    el.setAttribute('material', 'src: url(textures/saturn-ring.png); side: double; transparent: true; shader: flat;');
+    el.setAttribute('material', `src: url(${ringPath}); side: double; transparent: true; shader: flat;`);
   };
   img.onerror = () => { /* keep fallback */ };
-  img.src = 'textures/saturn-ring.png';
+  img.src = ringPath;
 }
 
 // ==================== DRAG / PAN ====================
@@ -363,8 +441,6 @@ export function focusPlanet(planetId: string): void {
   currentScale = targetScale;
 
   // Geser root sedikit agar planet terasa lebih dekat
-  // Offset berdasarkan orbit radius (geser berlawanan arah planet)
-  // Kita geser -x sedikit dan naik Y sedikit
   offsetX = 0;
   offsetY = DEFAULT_POS_Y + 0.05;
   offsetZ = 0;
@@ -398,7 +474,9 @@ function applyRootTransform(): void {
 }
 
 /**
- * Highlight planet
+ * Highlight planet — adds a subtle glow without destroying the texture
+ * We no longer set emissive on shader:flat materials (which doesn't work properly)
+ * Instead, we scale the planet up slightly for visual feedback
  */
 export function highlightPlanet(planetId: string): void {
   if (!sceneEl) return;
@@ -407,16 +485,10 @@ export function highlightPlanet(planetId: string): void {
 
   const planetEl = sceneEl.querySelector(`#planet-${planetId}`) as any;
   if (planetEl) {
-    // Tambah emissive glow tanpa merusak texture
-    const currentMat = planetEl.getAttribute('material') || {};
-    const currentSrc = currentMat.src || '';
-    if (currentSrc) {
-      planetEl.setAttribute('material', 'emissive', '#6366f1');
-      planetEl.setAttribute('material', 'emissiveIntensity', '0.3');
-    } else {
-      planetEl.setAttribute('material', 'emissive', '#6366f1');
-      planetEl.setAttribute('material', 'emissiveIntensity', '0.3');
-    }
+    // Visual feedback: scale the planet up by 25% 
+    const currentRadius = parseFloat(planetEl.getAttribute('radius') || '0.1');
+    planetEl.setAttribute('data-original-radius', String(currentRadius));
+    planetEl.setAttribute('radius', String(currentRadius * 1.25));
   }
 
   // Highlight orbit
@@ -433,9 +505,13 @@ export function highlightPlanet(planetId: string): void {
 function clearHighlight(): void {
   if (!sceneEl) return;
 
+  // Restore planet original radius
   sceneEl.querySelectorAll('.planet-entity').forEach((el: any) => {
-    el.setAttribute('material', 'emissive', '#000');
-    el.setAttribute('material', 'emissiveIntensity', '0');
+    const origRadius = el.getAttribute('data-original-radius');
+    if (origRadius) {
+      el.setAttribute('radius', origRadius);
+      el.removeAttribute('data-original-radius');
+    }
   });
 
   // Reset orbits
@@ -453,6 +529,15 @@ function clearHighlight(): void {
  * Destroy scene
  */
 export function destroyScene(): void {
+  // Stop MutationObserver
+  try {
+    const observer = (window as any).__arVideoObserver;
+    if (observer) {
+      observer.disconnect();
+      (window as any).__arVideoObserver = null;
+    }
+  } catch (_e) { /* ignore */ }
+
   // Stop camera streams
   try {
     document.querySelectorAll('video').forEach((video) => {
@@ -490,4 +575,5 @@ export function destroyScene(): void {
   highlightedPlanetId = null;
   focusedPlanetId = null;
   onPlanetTap = null;
+  originalMaterials.clear();
 }
