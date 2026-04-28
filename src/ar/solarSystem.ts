@@ -2,10 +2,12 @@
  * Solar System Builder
  * 
  * File ini bertanggung jawab untuk:
- * 1. Membuat scene A-Frame dengan AR.js
- * 2. Membangun hierarki entity tata surya
+ * 1. Memuat A-Frame dan AR.js secara dinamis
+ * 2. Membangun hierarki entity tata surya di atas marker
  * 3. Mengelola state orbit (pause/play)
  * 4. Mengelola zoom dan highlight planet
+ * 5. Melaporkan progress loading ke UI
+ * 6. Menghentikan camera stream saat destroy
  * 
  * Hierarki Entity:
  *   a-scene
@@ -26,6 +28,9 @@ import { registerAllComponents } from './aframeComponents';
 
 declare const AFRAME: any;
 
+// ===== Type untuk progress callback =====
+export type ProgressCallback = (step: string) => void;
+
 // ===== State =====
 let isPaused = false;
 let currentScale = 1;
@@ -41,22 +46,28 @@ let highlightedPlanetId: string | null = null;
 
 /**
  * Inisialisasi scene AR
- * Memuat A-Frame dan AR.js secara dinamis, lalu membangun scene
+ * Memuat A-Frame dan AR.js secara dinamis, lalu membangun scene.
+ * Menerima progress callback untuk melaporkan status loading.
  */
-export async function initARScene(): Promise<void> {
-  // Load A-Frame dan AR.js secara berurutan
+export async function initARScene(onProgress?: ProgressCallback): Promise<void> {
+  // Load A-Frame
   await loadScript('https://aframe.io/releases/1.6.0/aframe.min.js');
+  onProgress?.('aframe-loaded');
+
+  // Load AR.js
   await loadScript('https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js');
+  onProgress?.('arjs-loaded');
 
   // Register custom components setelah A-Frame tersedia
   registerAllComponents();
 
   // Build the scene
-  buildScene();
+  buildScene(onProgress);
 }
 
 /**
- * Load script secara dinamis dan menunggu sampai selesai
+ * Load script secara dinamis dan menunggu sampai selesai.
+ * Cek apakah script sudah pernah diload agar tidak duplikat.
  */
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -71,7 +82,7 @@ function loadScript(src: string): Promise<void> {
     script.src = src;
     script.async = true;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+    script.onerror = () => reject(new Error(`Gagal memuat library: ${src}`));
     document.head.appendChild(script);
   });
 }
@@ -79,9 +90,12 @@ function loadScript(src: string): Promise<void> {
 /**
  * Bangun keseluruhan scene A-Frame
  */
-function buildScene(): void {
+function buildScene(onProgress?: ProgressCallback): void {
   const container = document.getElementById('ar-scene-container');
   if (!container) return;
+
+  // Bersihkan container jika ada scene sebelumnya
+  container.innerHTML = '';
 
   // Buat elemen scene
   sceneEl = document.createElement('a-scene');
@@ -102,7 +116,6 @@ function buildScene(): void {
   solarSystemRoot = document.createElement('a-entity');
   solarSystemRoot.setAttribute('id', 'solar-system-root');
   solarSystemRoot.setAttribute('scale', `${currentScale} ${currentScale} ${currentScale}`);
-  // Sedikit geser ke atas agar lebih terlihat di atas marker
   solarSystemRoot.setAttribute('position', '0 0 0');
 
   // Bangun matahari
@@ -123,12 +136,12 @@ function buildScene(): void {
 
   container.appendChild(sceneEl);
 
-  // Event: scene loaded → hide loading overlay
+  // Event: scene loaded → report scene-ready
+  // Ini berarti A-Frame scene dan AR.js webcam sudah aktif
   sceneEl.addEventListener('loaded', () => {
     setTimeout(() => {
-      const loading = document.getElementById('ar-loading');
-      if (loading) loading.classList.add('hidden');
-    }, 1500); // sedikit delay agar transisi smooth
+      onProgress?.('scene-ready');
+    }, 800);
   });
 }
 
@@ -376,11 +389,26 @@ function clearHighlight(): void {
 }
 
 /**
- * Destroy scene — dipanggil saat user kembali ke landing page
+ * Destroy scene — dipanggil saat user kembali ke landing page.
+ * Juga menghentikan semua active camera streams.
  */
 export function destroyScene(): void {
+  // Hentikan semua video/camera streams
+  try {
+    const videos = document.querySelectorAll('video');
+    videos.forEach((video) => {
+      const stream = (video as HTMLVideoElement).srcObject as MediaStream;
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+        (video as HTMLVideoElement).srcObject = null;
+      }
+    });
+  } catch (e) {
+    console.warn('Error stopping camera streams:', e);
+  }
+
+  // Dispose A-Frame scene
   if (sceneEl && sceneEl.parentNode) {
-    // Properly dispose A-Frame scene
     try {
       (sceneEl as any).renderer?.dispose?.();
     } catch (e) {
@@ -388,6 +416,7 @@ export function destroyScene(): void {
     }
     sceneEl.parentNode.removeChild(sceneEl);
   }
+
   sceneEl = null;
   solarSystemRoot = null;
   isPaused = false;

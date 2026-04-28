@@ -501,7 +501,7 @@ body {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: #000;
+  background: transparent;
 }
 
 /* AR Loading */
@@ -518,6 +518,8 @@ body {
 
 .loading-content {
   animation: fadeIn 0.5s ease-out;
+  max-width: 340px;
+  padding: 0 1rem;
 }
 
 .loading-spinner {
@@ -547,9 +549,153 @@ body {
 }
 
 .loading-hint {
-  margin-top: 0.5rem;
+  margin-top: 0.75rem;
   color: var(--color-primary-light) !important;
   font-weight: 500;
+}
+
+.loading-status {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+/* Loading Steps */
+.loading-steps {
+  text-align: left;
+  margin: 1rem auto;
+  max-width: 260px;
+}
+
+.loading-step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.step-icon {
+  font-size: 0.85rem;
+  width: 1.2rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Error State */
+.loading-error {
+  animation: fadeIn 0.3s ease-out;
+  max-width: 380px;
+  padding: 0 1.25rem;
+  text-align: center;
+}
+
+.error-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.loading-error h2 {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: #f87171;
+}
+
+.error-message {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.error-details {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  text-align: left;
+}
+
+.error-details p {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.error-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-sm {
+  padding: 0.625rem 1.5rem;
+  font-size: 0.875rem;
+}
+
+/* Debug Panel */
+.debug-panel {
+  position: fixed;
+  bottom: 80px;
+  right: 0.75rem;
+  z-index: 300;
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  min-width: 200px;
+  max-width: 280px;
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.debug-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 600;
+  color: var(--color-primary-light);
+}
+
+.debug-close {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.debug-body {
+  padding: 0.4rem 0.6rem;
+}
+
+.debug-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.15rem 0;
+  gap: 0.5rem;
+}
+
+.debug-label {
+  color: var(--color-text-secondary);
+}
+
+.debug-value {
+  color: var(--color-text);
+  font-family: monospace;
+  text-align: right;
 }
 
 /* AR UI Overlay */
@@ -800,9 +946,19 @@ a-scene {
   z-index: 51 !important;
 }
 
+a-scene canvas.a-canvas,
 .a-canvas {
   position: fixed !important;
   inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+a-scene video {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 50 !important;
+  object-fit: cover !important;
 }
 
 /* Hide A-Frame default UI */

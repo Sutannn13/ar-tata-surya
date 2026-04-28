@@ -165,18 +165,75 @@
 
     <!-- ==================== AR PAGE ==================== -->
     <div id="ar-page" class="hidden">
-      <!-- Loading Overlay -->
+      <!-- Loading / Status Overlay -->
       <div id="ar-loading" class="ar-loading-overlay">
-        <div class="loading-content">
-          <div class="loading-spinner"></div>
-          <h2>Memuat AR...</h2>
-          <p>Izinkan akses kamera saat diminta</p>
-          <p class="loading-hint">Arahkan kamera ke marker Hiro</p>
+        <div class="loading-content" id="loading-content">
+          <div class="loading-spinner" id="loading-spinner"></div>
+          <h2 id="loading-title">Mempersiapkan AR...</h2>
+          <p id="loading-status" class="loading-status">Mengecek keamanan halaman...</p>
+          <div id="loading-steps" class="loading-steps">
+            <div class="loading-step" data-step="security">
+              <span class="step-icon" id="step-icon-security">⏳</span>
+              <span>Keamanan halaman (HTTPS)</span>
+            </div>
+            <div class="loading-step" data-step="camera">
+              <span class="step-icon" id="step-icon-camera">⏳</span>
+              <span>Izin kamera</span>
+            </div>
+            <div class="loading-step" data-step="aframe">
+              <span class="step-icon" id="step-icon-aframe">⏳</span>
+              <span>Memuat A-Frame</span>
+            </div>
+            <div class="loading-step" data-step="arjs">
+              <span class="step-icon" id="step-icon-arjs">⏳</span>
+              <span>Memuat AR.js</span>
+            </div>
+            <div class="loading-step" data-step="marker">
+              <span class="step-icon" id="step-icon-marker">⏳</span>
+              <span>Menyiapkan marker Hiro</span>
+            </div>
+          </div>
+          <p id="loading-hint" class="loading-hint">Arahkan kamera ke marker Hiro</p>
+        </div>
+
+        <!-- Error State (hidden by default) -->
+        <div id="loading-error" class="loading-error hidden">
+          <div class="error-icon">⚠️</div>
+          <h2 id="error-title">Gagal Memuat AR</h2>
+          <p id="error-message" class="error-message">Terjadi kesalahan saat memuat AR.</p>
+          <div id="error-details" class="error-details hidden">
+            <p id="error-details-text"></p>
+          </div>
+          <div class="error-actions">
+            <button id="btn-retry" class="btn-primary btn-sm">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+              </svg>
+              Coba Lagi
+            </button>
+            <button id="btn-error-back" class="btn-secondary btn-sm">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 12H5M12 19l-7-7 7-7"/>
+              </svg>
+              Kembali
+            </button>
+          </div>
         </div>
       </div>
 
       <!-- AR Scene (will be injected by JS) -->
       <div id="ar-scene-container"></div>
+
+      <!-- Debug Panel (development only) -->
+      <div id="debug-panel" class="debug-panel hidden">
+        <div class="debug-header">
+          <span>🔧 Debug Info</span>
+          <button id="btn-close-debug" class="debug-close">&times;</button>
+        </div>
+        <div class="debug-body" id="debug-body">
+          <!-- Populated by JS -->
+        </div>
+      </div>
 
       <!-- AR UI Overlay -->
       <div id="ar-ui" class="ar-ui-overlay">

@@ -1,0 +1,366 @@
+{
+  "cliVersion": "3.0.37",
+  "generatedAt": "2026-04-28T12:19:14.880Z",
+  "operationMode": "init",
+  "selectedProfile": "balanced",
+  "selectedPreset": null,
+  "projectScope": {
+    "key": "both",
+    "label": "Both (frontend + backend)"
+  },
+  "projectTopology": null,
+  "runtimeDecision": {
+    "mode": "agent-decision-required",
+    "explicitStack": null,
+    "detectedStackEvidence": "typescript.md",
+    "detectedAdditionalStackEvidence": []
+  },
+  "architectureDecision": {
+    "mode": "agent-decision-required",
+    "explicitBlueprint": null,
+    "detectedBlueprintEvidence": null
+  },
+  "selectedStack": null,
+  "selectedAdditionalStacks": [],
+  "selectedBlueprint": null,
+  "selectedAdditionalBlueprints": [],
+  "ruleLoadingPolicy": {
+    "canonicalSource": ".instructions.md",
+    "stackLoadingMode": "lazy",
+    "domainRuleLoadingMode": "lazy",
+    "loadedOnDemand": true,
+    "primaryStack": null,
+    "additionalStacks": [],
+    "agentDecisionRequired": true
+  },
+  "ciGuardrailsEnabled": true,
+  "setupDurationMs": 1906,
+  "runtimeEnvironment": {
+    "selected": "windows",
+    "selectedLabel": "Windows",
+    "detected": "windows",
+    "detectedLabel": "Windows",
+    "detectionSource": "process.platform"
+  },
+  "tokenOptimization": {
+    "enabled": true,
+    "selectedAgent": "copilot",
+    "preferredShellProxy": "native-fallback",
+    "stateFile": ".agent-context/state/token-optimization.json"
+  },
+  "memoryContinuity": {
+    "enabled": true,
+    "hydrationMode": "progressive-disclosure",
+    "adapters": [
+      "claude-code",
+      "gemini-cli",
+      "vscode-chat"
+    ],
+    "stateFile": ".agent-context/state/memory-continuity.json",
+    "activeSnapshotFile": ".agent-context/state/active-memory.json"
+  },
+  "autoDetection": {
+    "detectedStack": "typescript.md",
+    "detectedAdditionalStacks": [],
+    "detectedBlueprint": null,
+    "detectedAdditionalBlueprints": [],
+    "confidenceLabel": "high",
+    "confidenceScore": 0.97,
+    "confidenceGap": 0.97,
+    "detectionReasoning": "Top signal Typescript won with confidence 0.97 from markers: package.json, tsconfig.json, Vite config.",
+    "rankedCandidates": [
+      {
+        "stackFileName": "typescript.md",
+        "confidenceScore": 0.97,
+        "evidence": [
+          "package.json",
+          "tsconfig.json",
+          "Vite config"
+        ]
+      }
+    ],
+    "evidence": [
+      "package.json",
+      "tsconfig.json",
+      "Vite config"
+    ],
+    "detectionTransparency": {
+      "declaredAt": "2026-04-28T12:19:12.986Z",
+      "declarationType": "existing-project",
+      "declarationShown": true,
+      "detectionSummary": "This folder looks like Typescript with high confidence based on package.json, tsconfig.json, Vite config. Confidence gap: 0.97.",
+      "activeRulesSummary": {
+        "canonicalSource": ".instructions.md",
+        "compiledEntrypoints": [
+          ".agent-instructions.md",
+          ".cursorrules",
+          ".windsurfrules",
+          ".clauderc",
+          ".gemini/instructions.md",
+          ".github/copilot-instructions.md"
+        ],
+        "stackLoadingMode": "lazy",
+        "domainRuleLoadingMode": "lazy",
+        "selectedProfile": "balanced",
+        "selectedProfileDisplayName": "Balanced",
+        "blockingSeverities": [
+          "critical",
+          "high"
+        ],
+        "ciGuardrailsEnabled": true
+      },
+      "majorConstraints": [
+        "Preserve existing project markers and avoid forced stack migration.",
+        "Use detected runtime markers as evidence only; do not convert them into stack migration or design direction.",
+        "Explicit stack or blueprint overrides are constraints only when the user provides them."
+      ],
+      "quickConfirmation": {
+        "offered": false,
+        "response": "evidence-only",
+        "source": "existing-project-detection"
+      },
+      "decision": {
+        "mode": "existing-project-evidence-only",
+        "selectedStackFileName": "agent-decision-runtime.md",
+        "selectedBlueprintFileName": "agent-decision-architecture.md",
+        "selectedAdditionalStackFileNames": [],
+        "selectedAdditionalBlueprintFileNames": [],
+        "usedDetectedSetup": false,
+        "selectedProjectScopeKey": "both",
+        "selectedProjectScopeLabel": "Both (frontend + backend)"
+      },
+      "projectContextEvidence": "package.json: ar-tata-surya: Aplikasi Web Augmented Reality Tata Surya - Media Pembelajaran Interaktif | README.md: 🪐 AR Tata Surya — Media Pembelajaran Interaktif > Aplikasi Web Augmented Reality Tata Surya sebagai Media Pembelajaran Interaktif Menggunakan A-Frame dan AR.js 📖 Deskripsi Project"
+    },
+    "uiScope": {
+      "isUiScopeLikely": true,
+      "signalReasons": [
+        "ui markers: src, vite.config.ts, public, index.html",
+        "ui dependencies: tailwindcss",
+        "workspace src: ui markers: styles"
+      ],
+      "workspaceUiEntries": [
+        {
+          "relativePath": "src",
+          "detectedUiMarkers": [
+            "styles"
+          ],
+          "detectedUiDependencies": []
+        }
+      ],
+      "frontendEvidenceMetrics": {
+        "scannedFileCount": 7,
+        "hardcodedColorCount": 73,
+        "propDrillingCandidateCount": 0,
+        "mediaQueryCount": 2,
+        "tailwindBreakpointUsageCount": 1,
+        "arbitraryBreakpointCount": 0,
+        "uniqueMediaWidthCount": 2,
+        "structuredClassAttributeCount": 2,
+        "boundClassExpressionCount": 0,
+        "inlineStyleObjectCount": 0,
+        "inlineStyleBindingCount": 0,
+        "inlineStyleTokenBypassCount": 0
+      },
+      "designEvidenceSummary": {
+        "summaryVersion": "v1",
+        "source": "lightweight-static-scan",
+        "scanRootRelativePaths": [
+          "src"
+        ],
+        "scannedFileCount": 7,
+        "cssVariables": {
+          "definitionCount": 19,
+          "referenceCount": 90,
+          "sampleNames": [
+            "color-bg",
+            "color-bg-secondary",
+            "color-surface",
+            "color-surface-light",
+            "color-primary",
+            "color-primary-light",
+            "color-accent",
+            "color-text",
+            "color-text-secondary",
+            "color-border",
+            "font-display",
+            "font-body"
+          ],
+          "categoryCounts": {
+            "color": 12,
+            "spacing": 0,
+            "radius": 3,
+            "shadow": 1,
+            "typography": 2,
+            "motion": 1,
+            "other": 0
+          }
+        },
+        "colors": {
+          "hardcodedCount": 73,
+          "kindCounts": {
+            "hex": 32,
+            "rgb": 41,
+            "hsl": 0,
+            "oklch": 0,
+            "other": 0
+          },
+          "sampleValues": [
+            "#FFF8E7",
+            "#FFFFFF",
+            "#E8D191",
+            "#6366f1",
+            "#818cf8",
+            "#000",
+            "#FDB813",
+            "#A0826D",
+            "#E8CDA0",
+            "#4B89DC",
+            "#C1440E",
+            "#C88B3A"
+          ]
+        },
+        "spacing": {
+          "rawValueCount": 87,
+          "sampleValues": [
+            "100vh",
+            "960px",
+            "2rem",
+            "3rem",
+            "100px",
+            "1.5rem",
+            "0.5rem",
+            "1rem",
+            "540px",
+            "0.875rem",
+            "20px",
+            "600px"
+          ]
+        },
+        "radius": {
+          "rawValueCount": 0,
+          "sampleValues": []
+        },
+        "shadow": {
+          "rawValueCount": 8,
+          "sampleValues": [
+            "0 4px 20px rgba(99, 102, 241, 0.4)",
+            "0 6px 30px rgba(99, 102, 241, 0.55)",
+            "0 8px 24px rgba(99, 102, 241, 0.15)",
+            "0 0 12px rgba(99, 102, 241, 0.3)",
+            "0 0 12px rgba(255,255,255,0.1)",
+            "0 0 20px rgba(99, 102, 241, 0.5)",
+            "0 0 8px rgba(99, 102, 241, 0.3)",
+            "0 0 20px rgba(99, 102, 241, 0.6)"
+          ]
+        },
+        "typography": {
+          "fontFamilyCount": 14,
+          "fontSizeCount": 27,
+          "lineHeightCount": 7,
+          "letterSpacingCount": 2,
+          "fontFamilySamples": [
+            "var(--font-body)",
+            "var(--font-display)"
+          ],
+          "fontSizeSamples": [
+            "3.5rem",
+            "1.25rem",
+            "0.95rem",
+            "1rem",
+            "2rem",
+            "0.8rem",
+            "1.5rem",
+            "0.85rem",
+            "0.75rem",
+            "1.75rem",
+            "1.35rem",
+            "0.9rem"
+          ],
+          "lineHeightSamples": [
+            "1.1",
+            "1.7",
+            "1.5",
+            "1.8",
+            "1.6"
+          ],
+          "letterSpacingSamples": [
+            "0.05em",
+            "0.03em"
+          ]
+        },
+        "motion": {
+          "transitionCount": 17,
+          "animationCount": 10,
+          "durationCount": 13,
+          "durationSamples": [
+            "0.3s",
+            "4s",
+            "6s",
+            "1s",
+            "8s",
+            "2s",
+            "3s",
+            "0.25s",
+            "0.5s",
+            "0.8s"
+          ]
+        },
+        "tailwind": {
+          "breakpointUsageCount": 1,
+          "arbitraryBreakpointCount": 0,
+          "utilityFamilyCounts": {
+            "planet": 2
+          },
+          "utilityFamilySamples": [
+            "planet"
+          ]
+        },
+        "componentInventory": {
+          "componentFileCount": 2,
+          "pageFileCount": 0,
+          "layoutFileCount": 0,
+          "surfaceFileSamples": [
+            "src/ar/aframeComponents.ts",
+            "src/ar/solarSystem.ts"
+          ]
+        },
+        "structuredInspection": {
+          "mode": "attribute-aware-static-scan",
+          "classAttributeCount": 2,
+          "boundClassExpressionCount": 0,
+          "inlineStyleObjectCount": 0,
+          "inlineStyleBindingCount": 0,
+          "classAttributeSamples": [
+            "planet-chip",
+            "planet-chip-dot"
+          ],
+          "inlineStyleSamples": [],
+          "utilityFamilyCounts": {
+            "planet": 2
+          },
+          "utilityFamilySamples": [
+            "planet"
+          ],
+          "inlineTokenBypassSignals": {
+            "hardcodedColorCount": 0,
+            "rawSpacingCount": 0,
+            "rawRadiusCount": 0,
+            "rawShadowCount": 0,
+            "cssVariableReferenceCount": 0
+          }
+        },
+        "tokenBypassSignals": {
+          "hardcodedColorCount": 73,
+          "rawSpacingCount": 87,
+          "rawRadiusCount": 0,
+          "rawShadowCount": 8,
+          "inlineHardcodedColorCount": 0,
+          "inlineRawSpacingCount": 0,
+          "inlineRawRadiusCount": 0,
+          "inlineRawShadowCount": 0,
+          "inlineCssVariableReferenceCount": 0
+        }
+      }
+    }
+  }
+}

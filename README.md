@@ -135,42 +135,49 @@ npm run dev
 ## 💻 Cara Menjalankan Lokal
 
 ```bash
-# Jalankan dev server
+# Jalankan dev server (HTTP — hanya untuk desktop)
 npm run dev
+
+# Jalankan dev server dengan HTTPS (untuk testing AR di HP)
+npm run dev:https
 ```
 
-Server akan berjalan di `http://localhost:5173` (dan juga tersedia di IP lokal jaringan).
+Server akan berjalan di `http://localhost:5173` atau `https://localhost:5173`.
 
-> **Catatan:** Mode AR memerlukan akses kamera. Di `localhost`, browser biasanya mengizinkan akses kamera tanpa HTTPS.
+> **PENTING:** Kamera AR hanya bisa diakses di **localhost** atau **HTTPS**. Jika Anda membuka `http://192.168.x.x` di HP, kamera **tidak akan aktif** dan layar akan hitam. Gunakan `npm run dev:https` untuk testing di HP.
+
+> **Catatan HTTPS:** Saat menggunakan `npm run dev:https`, browser HP akan menampilkan peringatan "koneksi tidak aman" karena self-signed certificate. Klik **Advanced** → **Proceed** untuk melanjutkan.
 
 ---
 
 ## 📱 Cara Testing di HP (Smartphone)
 
-### Opsi 1: Melalui Jaringan Lokal (Development)
+> ⚠️ **PENTING:** Kamera browser di smartphone **hanya bisa diakses melalui HTTPS**. Membuka `http://192.168.x.x` akan menyebabkan layar hitam karena browser menolak akses kamera pada koneksi tidak aman.
 
-1. Pastikan laptop dan HP terhubung ke **WiFi yang sama**
-2. Jalankan `npm run dev` di laptop
-3. Perhatikan output di terminal, cari baris seperti:
-   ```
-   ➜ Network: http://192.168.x.x:5173/
-   ```
-4. Buka URL tersebut di browser HP
-5. **Penting:** Beberapa browser HP memerlukan HTTPS untuk mengakses kamera. Jika kamera tidak bisa diakses, gunakan Opsi 2.
-
-### Opsi 2: Melalui HTTPS (Menggunakan ngrok atau deploy)
-
-Untuk testing dengan kamera di HP, diperlukan HTTPS:
+### Opsi 1: Dev Server HTTPS (Direkomendasikan)
 
 ```bash
-# Install ngrok (gratis)
-# https://ngrok.com/download
+# Jalankan dev server dengan HTTPS
+npm run dev:https
+```
 
-# Jalankan dev server
+1. Pastikan laptop dan HP terhubung ke **WiFi yang sama**
+2. Perhatikan output di terminal, cari baris seperti:
+   ```
+   ➜ Network: https://192.168.x.x:5173/
+   ```
+3. Buka URL **HTTPS** tersebut di browser HP
+4. Browser akan menampilkan peringatan keamanan → klik **Advanced** → **Proceed**
+5. Izinkan akses kamera saat diminta
+
+### Opsi 2: Melalui ngrok
+
+```bash
+# Jalankan dev server biasa
 npm run dev
 
 # Di terminal lain, buat tunnel HTTPS
-ngrok http 5173
+npx ngrok http 5173
 ```
 
 Lalu buka URL HTTPS dari ngrok di browser HP.
@@ -352,6 +359,55 @@ Marker **Hiro** adalah marker default yang digunakan oleh AR.js. Berikut cara me
    - Gunakan browser Chrome terbaru
 
 4. **Texture Opsional:** Aplikasi berjalan normal tanpa texture. Texture hanya menambah kualitas visual.
+
+---
+
+## 🔧 Troubleshooting
+
+### Layar hitam saat klik "Mulai AR"
+
+**Penyebab:** Halaman dibuka melalui HTTP (bukan HTTPS) di smartphone.
+
+**Solusi:**
+- Gunakan `npm run dev:https` untuk testing di HP
+- Atau deploy ke Vercel/Netlify (otomatis HTTPS)
+- Atau gunakan ngrok: `npx ngrok http 5173`
+- Di localhost/desktop biasanya tidak masalah
+
+### Izin kamera ditolak
+
+**Solusi:**
+1. Buka pengaturan browser → Site Settings → Camera
+2. Cari URL website dan ubah izin kamera menjadi "Allow"
+3. Refresh halaman dan klik "Mulai AR" lagi
+
+### Marker Hiro tidak terdeteksi
+
+**Solusi:**
+- Pastikan marker tercetak/tampil jelas dan tidak terpotong
+- Jaga jarak kamera 15–40 cm dari marker
+- Pastikan pencahayaan cukup terang
+- Hindari pantulan cahaya pada marker
+- Pastikan ukuran marker minimal 8×8 cm
+- Coba pegang HP lebih stabil
+
+### A-Frame / AR.js CDN gagal dimuat
+
+**Penyebab:** Koneksi internet lambat atau CDN tidak tersedia.
+
+**Solusi:**
+- Pastikan koneksi internet stabil
+- Coba refresh halaman
+- Periksa apakah domain `aframe.io` dan `raw.githack.com` tidak diblokir
+
+### Texture planet tidak muncul
+
+**Solusi:**
+- Pastikan file texture ada di `public/textures/`
+- Nama file harus sesuai: `sun.jpg`, `mercury.jpg`, dst.
+- Format: JPG untuk planet, PNG untuk saturn-ring
+- Restart dev server setelah menambah texture
+- Tanpa texture, aplikasi tetap jalan dengan warna fallback
 
 ---
 
