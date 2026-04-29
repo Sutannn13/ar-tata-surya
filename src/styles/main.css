@@ -629,15 +629,27 @@ body {
   overflow: hidden;
   width: 100vw;
   height: 100vh;
-  height: 100dvh; /* dynamic viewport height for mobile */
-  z-index: 0;
+  height: 100dvh;
+  z-index: 9999;
+  isolation: isolate;
+}
+
+/* Mobile viewport lock during AR */
+html.ar-active,
+body.ar-active {
+  overflow: hidden !important;
+  width: 100% !important;
+  height: 100% !important;
+  position: fixed !important;
+  inset: 0;
+  touch-action: none;
 }
 
 /* AR Loading */
 .ar-loading-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 200;
+  z-index: 20;
   background: var(--color-bg);
   display: flex;
   align-items: center;
@@ -646,7 +658,7 @@ body {
 }
 
 #ar-loading {
-  z-index: 200;
+  z-index: 20;
 }
 
 .loading-content {
@@ -778,10 +790,10 @@ body {
 
 /* Debug Panel */
 .debug-panel {
-  position: fixed;
+  position: absolute;
   bottom: 80px;
   right: 0.75rem;
-  z-index: 300;
+  z-index: 30;
   background: rgba(0, 0, 0, 0.85);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
@@ -836,19 +848,15 @@ body {
 
 /* AR UI Overlay */
 .ar-ui-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 100;
+  position: absolute;
+  inset: 0;
+  z-index: 10;
   pointer-events: none;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -1148,51 +1156,47 @@ body {
 
 /* ===== A-Frame Scene Override ===== */
 /*
- * Layering (bottom to top):
- *   video (z:1) → ar-scene-container (z:2) → a-scene (z:3) → canvas (z:4) → UI (z:100)
- * Video is BELOW canvas. Canvas must be transparent so video shows through.
+ * All AR elements live inside #ar-page (z-index:9999, isolation:isolate).
+ * Layering inside #ar-page (all position:absolute):
+ *   video (z:1) → a-scene/canvas (z:2) → UI (z:10) → loading (z:20) → debug (z:30)
  */
 #ar-scene-container {
-  position: fixed !important;
+  position: absolute !important;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
-  z-index: 2;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
   background: transparent !important;
   pointer-events: auto;
   overflow: hidden;
 }
 
-a-scene {
-  position: fixed !important;
+#ar-scene-container a-scene {
+  position: absolute !important;
   inset: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  height: 100dvh !important;
-  z-index: 3 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 2 !important;
   background: transparent !important;
 }
 
-a-scene canvas.a-canvas,
-.a-canvas {
-  position: fixed !important;
+#ar-scene-container canvas.a-canvas,
+#ar-scene-container .a-canvas {
+  position: absolute !important;
   inset: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  height: 100dvh !important;
+  width: 100% !important;
+  height: 100% !important;
   object-fit: cover !important;
-  z-index: 4 !important;
+  z-index: 2 !important;
   background: transparent !important;
 }
 
-/* AR.js camera video — sits BEHIND the transparent canvas */
-#ar-page video:not(#manual-camera-preview) {
-  position: fixed !important;
-  inset: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  height: 100dvh !important;
+#ar-scene-container video {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
   z-index: 1 !important;
   object-fit: cover !important;
   display: block !important;
@@ -1201,6 +1205,7 @@ a-scene canvas.a-canvas,
   background: transparent !important;
   -webkit-transform: none !important;
   transform: none !important;
+  pointer-events: none !important;
 }
 
 /* Hide A-Frame default UI */
