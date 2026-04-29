@@ -2,7 +2,7 @@
 
 ## 1. Design Intent and Product Personality
 
-The interface exists to support a stable, readable AR camera view with minimal visual distraction. This update focuses on camera visibility, marker-relative GLB sizing, and compact mobile overlays, not a visual redesign.
+The interface exists to support a stable, readable AR camera view with minimal visual distraction. This update focuses on camera visibility, marker-relative GLB sizing, GLB material recovery, and compact mobile overlays, not a visual redesign.
 
 ## 2. Audience and Use-Context Signals
 
@@ -10,7 +10,7 @@ Primary users are students and instructors using mobile browsers in classroom or
 
 ## 3. Visual Direction and Distinctive Moves
 
-Anchor reference: optical viewfinder with a matte box and HUD markings. Maintain the existing visual language and strengthen the camera-layer hierarchy so the live feed is always visible behind the AR scene and UI overlays. Model scale should behave like an object framed through an optical instrument: fit the target area first, then allow small user zoom adjustments.
+Anchor reference: optical viewfinder with a matte box and HUD markings. Maintain the existing visual language and strengthen the camera-layer hierarchy so the live feed is always visible behind the AR scene and UI overlays. Model scale and orientation should behave like an object framed through an optical instrument: fit the target area first, align the subject for recognition, then allow small user zoom adjustments.
 
 ## 4. Color, Typography, Spacing, and Density Decisions
 
@@ -18,11 +18,11 @@ Keep current palette and type choices; treat camera video as the base layer and 
 
 ## 5. Token Architecture and Alias Strategy
 
-No new tokens are introduced. Existing tokens remain the source of truth for overlay UI, while camera video uses fixed layering rules. AR model sizing uses device profiles and world-unit target sizes instead of visual CSS tokens.
+No new tokens are introduced. Existing tokens remain the source of truth for overlay UI, while camera video uses fixed fullscreen layering rules. AR model sizing uses device profiles and world-unit target sizes instead of visual CSS tokens.
 
 ## 6. Responsive Recomposition Plan
 
-Mobile remains primary; camera and canvas stay fullscreen. Planet chips stay near the top as a horizontal scroller, while the focus information panel and return action stay compact near the bottom to keep the marker area readable. Desktop retains the same hierarchy for predictable debugging.
+Mobile remains primary; camera, scene, and canvas stay fullscreen against the layout viewport. Planet chips stay near the top as a horizontal scroller, while the focus information panel and return action stay compact near the bottom to keep the marker area readable. Desktop retains the same hierarchy for predictable debugging.
 
 ## 7. Motion, Interaction, and Feedback Rules
 
@@ -30,7 +30,7 @@ Signature motion is short fade in/out for status overlays plus slow object rotat
 
 ## 8. Component Language, States, and Morphology
 
-Overlay components keep their current morphology. State feedback is focused on loading, camera readiness, focus selection, compact detail disclosure, and safe return to the solar-system view.
+Overlay components keep their current morphology. State feedback is focused on loading, camera readiness, focus selection, texture-correct planet identity, compact detail disclosure, and safe return to the solar-system view.
 
 ## 9. Source Boundaries and Context Hygiene
 
@@ -46,4 +46,4 @@ Avoid hiding the camera video behind opaque layers or using loading overlays tha
 
 ## 12. Implementation Notes for Future UI Tasks
 
-Any future visual redesign should update this document and the design intent JSON before CSS changes. Future model-size tuning should start from the target size map in `src/data/planets.ts` before changing CSS.
+Any future visual redesign should update this document and the design intent JSON before CSS changes. Future model-size tuning should start from the target size map in `src/data/planets.ts` before changing CSS; future GLB swaps should check material texture compatibility before changing render code.

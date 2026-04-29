@@ -51,6 +51,7 @@ let offsetY = 0;
 let offsetZ = 0;
 
 const loadedModels: Set<string> = new Set();
+const textureCache: Map<string, any> = new Map();
 
 type AutoModelScaleOptions = {
   targetSize: number;
@@ -69,6 +70,59 @@ function isDebugEnabled(): boolean {
 
 function debugLog(...args: unknown[]): void {
   if (isDebugEnabled()) console.log('[AR]', ...args);
+}
+
+function getViewportSize(): { width: number; height: number } {
+  const vv = window.visualViewport;
+  const width = Math.ceil(Math.max(
+    document.documentElement.clientWidth || 0,
+    window.innerWidth || 0,
+    vv?.width || 0
+  ));
+  const height = Math.ceil(Math.max(
+    document.documentElement.clientHeight || 0,
+    window.innerHeight || 0,
+    vv?.height || 0
+  ));
+
+  return { width, height };
+}
+
+function getThree(): any {
+  return AFRAME?.THREE || (window as any).THREE;
+}
+
+function resolvePublicAssetPath(assetPath: string): string {
+  if (assetPath.startsWith('http') || assetPath.startsWith('/')) return assetPath;
+  return `${getTextureBaseUrl()}${assetPath}`;
+}
+
+function getCachedTexture(assetPath: string): any | null {
+  const THREE = getThree();
+  if (!THREE?.TextureLoader) return null;
+
+  const url = resolvePublicAssetPath(assetPath);
+  const cached = textureCache.get(url);
+  if (cached) return cached;
+
+  const loader = new THREE.TextureLoader();
+  loader.crossOrigin = 'anonymous';
+  const texture = loader.load(
+    url,
+    () => debugLog('Texture recovery loaded', url),
+    undefined,
+    () => console.warn('[AR] Failed to recover texture:', url)
+  );
+
+  texture.flipY = false;
+  if ('colorSpace' in texture && THREE.SRGBColorSpace) {
+    texture.colorSpace = THREE.SRGBColorSpace;
+  } else if ('encoding' in texture && THREE.sRGBEncoding) {
+    texture.encoding = THREE.sRGBEncoding;
+  }
+
+  textureCache.set(url, texture);
+  return texture;
 }
 
 function buildAutoModelScaleAttribute(options: AutoModelScaleOptions): string {
@@ -93,6 +147,87 @@ function setAutoModelScale(el: HTMLElement, options: AutoModelScaleOptions): voi
 
   el.dataset.autoModelScale = value;
   el.setAttribute('auto-model-scale', value);
+}
+
+function getMaterials(material: any): any[] {
+  if (!material) return [];
+  return Array.isArray(material) ? material : [material];
+}
+
+function materialHasTexture(material: any): boolean {
+  return getMaterials(material).some((entry) => !!entry?.map);
+}
+
+function isFlatRingMesh(mesh: any): boolean {
+  const THREE = getThree();
+  const geometry = mesh?.geometry;
+  if (!THREE?.Vector3 || !geometry) return false;
+
+  if (!geometry.boundingBox) geometry.computeBoundingBox?.();
+  const box = geometry.boundingBox;
+  if (!box) return false;
+
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const dims = [Math.abs(size.x), Math.abs(size.y), Math.abs(size.z)].sort((a, b) => a - b);
+  return dims[0] <= Math.max(dims[2] * 0.04, 0.01);
+}
+
+function applyRecoveredTexture(mesh: any, texture: any, planet: Planet, isRing: boolean): void {
+  const THREE = getThree();
+  getMaterials(mesh.material).forEach((material) => {
+    if (!material) return;
+    material.map = texture;
+    if (material.color && THREE?.Color) material.color = new THREE.Color('#ffffff');
+    if ('metalness' in material) material.metalness = 0;
+    if ('roughness' in material) material.roughness = isRing ? 0.7 : 1;
+    if (THREE?.DoubleSide) material.side = THREE.DoubleSide;
+    if (isRing) {
+      material.transparent = true;
+      material.alphaTest = 0.12;
+    }
+    material.needsUpdate = true;
+  });
+
+  if (isDebugEnabled()) {
+    debugLog('Recovered GLB material texture', {
+      planet: planet.id,
+      mesh: mesh.name || 'mesh',
+      texture: isRing ? planet.ringTexturePath : planet.texturePath,
+    });
+  }
+}
+
+function normalizeModelMaterials(root: any): void {
+  const THREE = getThree();
+  root?.traverse?.((child: any) => {
+    if (!child?.isMesh) return;
+    child.frustumCulled = false;
+
+    getMaterials(child.material).forEach((material) => {
+      if (!material) return;
+      if (material.color && THREE?.Color) material.color = new THREE.Color('#ffffff');
+      if ('metalness' in material) material.metalness = 0;
+      if ('roughness' in material) material.roughness = Math.max(material.roughness ?? 0.8, 0.8);
+      if (THREE?.DoubleSide) material.side = THREE.DoubleSide;
+      material.needsUpdate = true;
+    });
+  });
+}
+
+function recoverPlanetModelMaterials(root: any, planet: Planet): void {
+  normalizeModelMaterials(root);
+
+  const planetTexture = getCachedTexture(planet.texturePath);
+  const ringTexture = planet.ringTexturePath ? getCachedTexture(planet.ringTexturePath) : null;
+  if (!planetTexture && !ringTexture) return;
+
+  root?.traverse?.((child: any) => {
+    if (!child?.isMesh || materialHasTexture(child.material)) return;
+    const useRingTexture = !!ringTexture && isFlatRingMesh(child);
+    const texture = useRingTexture ? ringTexture : planetTexture;
+    if (texture) applyRecoveredTexture(child, texture, planet, useRingTexture);
+  });
 }
 
 // ===== Adopt AR.js video into container =====
@@ -122,6 +257,7 @@ export function updateDebugPanel(): void {
   debugPanel.classList.remove('hidden');
 
   const arVideo = getARVideoElement();
+  const viewport = getViewportSize();
   const rows: { label: string; value: string }[] = [
     { label: 'Mode', value: currentMode },
     { label: 'Focus', value: focusedPlanetId || 'none' },
@@ -133,6 +269,7 @@ export function updateDebugPanel(): void {
     { label: 'MrkFound', value: String(markerFoundCount) },
     { label: 'Videos', value: String(document.querySelectorAll('video').length) },
     { label: 'AR Vid', value: arVideo ? `${arVideo.videoWidth}x${arVideo.videoHeight}` : 'none' },
+    { label: 'Viewport', value: `${viewport.width}x${viewport.height}` },
   ];
 
   debugBody.innerHTML = rows
@@ -214,12 +351,34 @@ export async function initARScene(onProgress?: ProgressCallback): Promise<void> 
 // ===== Viewport =====
 
 function updateViewportSize(): void {
-  const vv = window.visualViewport;
-  const w = vv ? vv.width : window.innerWidth;
-  const h = vv ? vv.height : window.innerHeight;
-  document.documentElement.style.setProperty('--app-width', `${w}px`);
-  document.documentElement.style.setProperty('--app-height', `${h}px`);
+  const { width, height } = getViewportSize();
+  document.documentElement.style.setProperty('--app-width', `${width}px`);
+  document.documentElement.style.setProperty('--app-height', `${height}px`);
+  fitARSurfaceElements(width, height);
   refreshSceneDeviceLayout();
+}
+
+function fitARSurfaceElements(width = getViewportSize().width, height = getViewportSize().height): void {
+  const sizeStyles = {
+    position: 'absolute',
+    top: '0',
+    left: '0',
+    right: '0',
+    bottom: '0',
+    width: `${width}px`,
+    height: `${height}px`,
+  };
+
+  const applySize = (el: HTMLElement) => {
+    Object.entries(sizeStyles).forEach(([property, value]) => {
+      el.style.setProperty(property, value, 'important');
+    });
+  };
+
+  const container = document.getElementById('ar-scene-container');
+  if (container) applySize(container);
+  document.querySelectorAll<HTMLElement>('#ar-scene-container a-scene, #ar-scene-container canvas.a-canvas, #ar-scene-container video')
+    .forEach(applySize);
 }
 
 function refreshSceneDeviceLayout(): void {
@@ -267,7 +426,11 @@ function buildScene(onProgress?: ProgressCallback): void {
 
   sceneEl = document.createElement('a-scene');
   sceneEl.setAttribute('embedded', '');
-  sceneEl.setAttribute('arjs', 'sourceType: webcam; trackingMethod: best; debugUIEnabled: false;');
+  const viewport = getViewportSize();
+  sceneEl.setAttribute(
+    'arjs',
+    `sourceType: webcam; trackingMethod: best; debugUIEnabled: false; sourceWidth: ${viewport.width}; sourceHeight: ${viewport.height}; displayWidth: ${viewport.width}; displayHeight: ${viewport.height};`
+  );
   sceneEl.setAttribute('renderer', 'logarithmicDepthBuffer: true; precision: mediump; alpha: true; antialias: true;');
   sceneEl.setAttribute('vr-mode-ui', 'enabled: false');
 
@@ -372,10 +535,11 @@ function loadSolarSystemGLB(): void {
     fallbackScale,
     modelName: 'solar_system',
   });
-  glbEntity.setAttribute('self-rotation', `speed: 8; paused: ${isPaused}`);
+  glbEntity.setAttribute('self-rotation', `speed: 2; paused: ${isPaused}; baseY: 90`);
 
   glbEntity.addEventListener('model-loaded', () => {
     debugLog('solar_system.glb loaded', { targetSize, fallbackScale });
+    normalizeModelMaterials((glbEntity as any).getObject3D('mesh'));
     usingSolarSystemGLB = true;
     if (proceduralRoot) proceduralRoot.setAttribute('visible', 'false');
     if (solarSystemModelRoot) solarSystemModelRoot.setAttribute('visible', 'true');
@@ -534,6 +698,7 @@ export function updateFocusPlanet(planetId: string): void {
 
   glbEntity.addEventListener('model-loaded', () => {
     debugLog(`${planet.id}.glb loaded for focus`, { focusTargetSize, fallbackScale });
+    recoverPlanetModelMaterials((glbEntity as any).getObject3D('mesh'), planet);
     loadedModels.add(planet.id);
   });
 
@@ -583,6 +748,7 @@ function forceTransparentRenderer(): void {
   if (!sceneEl) return;
   const renderer = (sceneEl as any).renderer;
   if (renderer) { renderer.setClearColor(0x000000, 0); renderer.autoClear = true; }
+  fitARSurfaceElements();
   const canvas = document.querySelector('canvas.a-canvas') as HTMLCanvasElement | null;
   if (canvas) canvas.style.background = 'transparent';
   if (sceneEl) (sceneEl as HTMLElement).style.background = 'transparent';
@@ -599,17 +765,26 @@ function fixCameraVideoElement(): void {
   const apply = () => {
     const container = document.getElementById('ar-scene-container');
     if (!container) return;
+    const { width, height } = getViewportSize();
     adoptARVideo();
+    fitARSurfaceElements(width, height);
     container.querySelectorAll('video').forEach((video) => {
-      video.style.position = 'absolute';
-      video.style.top = '0'; video.style.left = '0';
-      video.style.width = '100%'; video.style.height = '100%';
-      video.style.objectFit = 'cover'; video.style.zIndex = '1';
-      video.style.display = 'block'; video.style.opacity = '1';
-      video.style.visibility = 'visible'; video.style.background = 'transparent';
-      video.style.transform = 'none';
-      (video.style as any).webkitTransform = 'none';
-      video.style.pointerEvents = 'none';
+      video.style.setProperty('position', 'absolute', 'important');
+      video.style.setProperty('inset', '0', 'important');
+      video.style.setProperty('width', `${width}px`, 'important');
+      video.style.setProperty('height', `${height}px`, 'important');
+      video.style.setProperty('min-width', '100vw', 'important');
+      video.style.setProperty('min-height', '100dvh', 'important');
+      video.style.setProperty('object-fit', 'cover', 'important');
+      video.style.setProperty('object-position', 'center center', 'important');
+      video.style.setProperty('z-index', '1', 'important');
+      video.style.setProperty('display', 'block', 'important');
+      video.style.setProperty('opacity', '1', 'important');
+      video.style.setProperty('visibility', 'visible', 'important');
+      video.style.setProperty('background', 'transparent', 'important');
+      video.style.setProperty('transform', 'none', 'important');
+      video.style.setProperty('-webkit-transform', 'none', 'important');
+      video.style.setProperty('pointer-events', 'none', 'important');
       video.setAttribute('playsinline', '');
       video.setAttribute('webkit-playsinline', '');
       video.playsInline = true;

@@ -67,6 +67,9 @@ export function registerSelfRotation(): void {
     schema: {
       speed: { type: 'number', default: 50 },
       paused: { type: 'boolean', default: false },
+      baseX: { type: 'number', default: 0 },
+      baseY: { type: 'number', default: 0 },
+      baseZ: { type: 'number', default: 0 },
     },
 
     init: function () {
@@ -77,7 +80,9 @@ export function registerSelfRotation(): void {
       if (this.data.paused) return;
       const dt = delta / 1000;
       this.angle += this.data.speed * dt;
-      this.el.object3D.rotation.y = (this.angle * Math.PI) / 180;
+      this.el.object3D.rotation.x = (this.data.baseX * Math.PI) / 180;
+      this.el.object3D.rotation.y = ((this.data.baseY + this.angle) * Math.PI) / 180;
+      this.el.object3D.rotation.z = (this.data.baseZ * Math.PI) / 180;
     },
   });
 }

@@ -28,6 +28,7 @@ export interface Planet {
   solarTargetSizeMultiplier?: number;
   modelRotationOffset?: ModelOffset;
   modelPositionOffset?: ModelOffset;
+  ringTexturePath?: string;
   focusPosition?: string;   // Override posisi saat focus (A-Frame format)
   radius: number;           // Radius planet (skala A-Frame, procedural fallback)
   orbitRadius: number;      // Jarak orbit dari matahari
@@ -202,9 +203,10 @@ export const planets: Planet[] = [
     fallbackColor: '#E8D191',
     texturePath: 'textures/saturn.jpg',
     modelPath: '/models/saturn.glb',
+    ringTexturePath: 'textures/saturn-ring.png',
     modelScale: 0.08,
     focusScale: 0.4,
-    focusTargetSizeMultiplier: 0.75,
+    focusTargetSizeMultiplier: 0.68,
     radius: 0.13,
     orbitRadius: 1.75,
     orbitSpeed: 0.18,
@@ -298,11 +300,11 @@ export function getDeviceProfile(): DeviceProfile {
 }
 
 export const DEVICE_TARGET_SIZE_MAP: Record<DeviceProfile, DeviceScaleConfig> = {
-  'small-phone': { solarSystemTargetSize: 0.75, focusPlanetTargetSize: 0.45, solarPositionY: 0.15, focusPositionY: 0.25 },
-  'phone':       { solarSystemTargetSize: 0.85, focusPlanetTargetSize: 0.50, solarPositionY: 0.15, focusPositionY: 0.25 },
-  'large-phone': { solarSystemTargetSize: 0.95, focusPlanetTargetSize: 0.55, solarPositionY: 0.15, focusPositionY: 0.25 },
-  'tablet':      { solarSystemTargetSize: 1.15, focusPlanetTargetSize: 0.70, solarPositionY: 0.18, focusPositionY: 0.28 },
-  'desktop':     { solarSystemTargetSize: 1.25, focusPlanetTargetSize: 0.75, solarPositionY: 0.2, focusPositionY: 0.3 },
+  'small-phone': { solarSystemTargetSize: 0.75, focusPlanetTargetSize: 0.34, solarPositionY: 0.15, focusPositionY: 0.24 },
+  'phone':       { solarSystemTargetSize: 0.85, focusPlanetTargetSize: 0.38, solarPositionY: 0.15, focusPositionY: 0.24 },
+  'large-phone': { solarSystemTargetSize: 0.95, focusPlanetTargetSize: 0.42, solarPositionY: 0.15, focusPositionY: 0.24 },
+  'tablet':      { solarSystemTargetSize: 1.15, focusPlanetTargetSize: 0.55, solarPositionY: 0.18, focusPositionY: 0.27 },
+  'desktop':     { solarSystemTargetSize: 1.25, focusPlanetTargetSize: 0.62, solarPositionY: 0.2, focusPositionY: 0.28 },
 };
 
 /**
