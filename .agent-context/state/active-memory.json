@@ -8,29 +8,33 @@
   },
   "project": {
     "name": "ar-tata-surya",
-    "currentFocus": "Problems panel cleanup and compatibility fixes",
+    "currentFocus": "WebAR GLB scale normalization and compact mobile focus UI",
     "durableFacts": [
-      "AR experience depends on A-Frame and AR.js webcam video layering and readiness checks."
+      "AR experience depends on A-Frame and AR.js webcam video layering and readiness checks.",
+      "GLB solar system and focus planet sizing is normalized with an A-Frame auto-model-scale component using THREE.Box3 target sizes."
     ]
   },
   "progress": {
     "lastAchievements": [
-      "Added minimal DESIGN.md and ADR for the AR camera layering fix.",
-      "Implemented camera video layering, readiness gating, and debug telemetry.",
-      "Cleaned viewport meta, CSS prefixes, and enabled strict TypeScript.",
-      "Build passed with npm run build."
+      "Added auto-model-scale to normalize GLB bounding boxes after model-loaded.",
+      "Added device target sizes for small-phone, phone, large-phone, tablet, and desktop.",
+      "Applied normalized sizing to solar_system.glb and focus planet GLBs with per-planet multipliers.",
+      "Compacted mobile focus overlays and preserved AR camera layering.",
+      "Build passed with npm.cmd run build."
     ],
     "pendingIssues": [
-      "Verify camera feed on Vercel HTTPS across mobile and laptop devices.",
-      "Remaining compatibility warnings for text-size-adjust, scrollbar-width, and theme-color." 
+      "Verify normalized GLB sizing on Vercel HTTPS with a physical Hiro marker.",
+      "Check Mars, Jupiter, and Saturn focus mode on Infinix Note 40 portrait."
     ],
     "nextBestActions": [
-      "Test with ?debug=true to review video readiness telemetry.",
-      "Confirm marker Hiro detection after camera feed shows."
+      "Test with ?debug=true to review auto-model-scale bounding box telemetry.",
+      "Tune DEVICE_TARGET_SIZE_MAP or per-planet focusTargetSizeMultiplier if a model still feels too large or too small."
     ],
     "validationState": [
-      "npm run build: pass",
-      "npm run validate: not available"
+      "npm run build: blocked by PowerShell npm.ps1 execution policy",
+      "npm.cmd run build: pass",
+      "npm run validate: not available",
+      "npm run lint/typecheck scripts: not present in package.json"
     ]
   },
   "designContinuity": {
@@ -48,5 +52,5 @@
     "redactSensitiveTextBeforeWriting": true
   },
   "generatedAt": "2026-04-28T12:19:14.834Z",
-  "lastUpdatedAt": "2026-04-29T00:30:00Z"
+  "lastUpdatedAt": "2026-04-29T17:56:59+07:00"
 }

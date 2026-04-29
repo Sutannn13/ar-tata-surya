@@ -135,6 +135,7 @@ function updateInfoPanel(planet: Planet): void {
   if (colorEl) colorEl.style.background = planet.color;
 
   if (factContainer && factText) {
+    factContainer.classList.remove('hidden');
     factText.textContent = planet.funFact;
   }
 
@@ -146,6 +147,7 @@ function updateInfoPanel(planet: Planet): void {
 
   if (expandBtn) {
     expandBtn.classList.remove('hidden');
+    expandBtn.setAttribute('aria-expanded', 'false');
     expandBtn.textContent = '▲ Detail';
   }
 }
@@ -162,6 +164,7 @@ function setupPanelToggle(): void {
       e.stopPropagation();
       panelExpanded = !panelExpanded;
       panel.classList.toggle('expanded', panelExpanded);
+      expandBtn.setAttribute('aria-expanded', String(panelExpanded));
       expandBtn.textContent = panelExpanded ? '▼ Tutup' : '▲ Detail';
     });
   }
@@ -249,7 +252,10 @@ function resetUIState(): void {
   if (colorEl) colorEl.style.background = 'rgba(30, 41, 59, 0.7)';
   if (factContainer) factContainer.classList.add('hidden');
   if (panel) { panel.classList.remove('has-planet', 'expanded'); }
-  if (expandBtn) expandBtn.classList.add('hidden');
+  if (expandBtn) {
+    expandBtn.classList.add('hidden');
+    expandBtn.setAttribute('aria-expanded', 'false');
+  }
 
   // Hide back-to-solar button
   showBackToSolarSystem(false);

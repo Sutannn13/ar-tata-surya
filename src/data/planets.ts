@@ -9,6 +9,8 @@
  * Model GLB diletakkan di public/models/
  */
 
+export type ModelOffset = string;
+
 export interface Planet {
   id: string;
   name: string;
@@ -20,8 +22,12 @@ export interface Planet {
   fallbackColor: string;    // Warna fallback untuk focus sphere
   texturePath: string;      // Path ke file texture di public/textures/
   modelPath: string;        // Path ke file GLB di public/models/
-  modelScale: number;       // Scale default model GLB di mode tata surya
-  focusScale: number;       // Scale model GLB di mode focus
+  modelScale: number;       // Fallback scale manual jika normalisasi GLB gagal
+  focusScale: number;       // Fallback scale manual jika normalisasi focus gagal
+  focusTargetSizeMultiplier?: number;
+  solarTargetSizeMultiplier?: number;
+  modelRotationOffset?: ModelOffset;
+  modelPositionOffset?: ModelOffset;
   focusPosition?: string;   // Override posisi saat focus (A-Frame format)
   radius: number;           // Radius planet (skala A-Frame, procedural fallback)
   orbitRadius: number;      // Jarak orbit dari matahari
@@ -40,6 +46,7 @@ export interface SunData {
 export interface SolarSystemModelConfig {
   modelPath: string;
   defaultScale: number;
+  targetSizeMultiplier: number;
   fallbackEnabled: boolean;
 }
 
@@ -49,6 +56,7 @@ export interface SolarSystemModelConfig {
 export const solarSystemConfig: SolarSystemModelConfig = {
   modelPath: '/models/solar_system.glb',
   defaultScale: 0.3,
+  targetSizeMultiplier: 1,
   fallbackEnabled: true,
 };
 
@@ -91,6 +99,7 @@ export const planets: Planet[] = [
     modelPath: '/models/mercury.glb',
     modelScale: 0.05,
     focusScale: 0.4,
+    focusTargetSizeMultiplier: 1,
     radius: 0.055,
     orbitRadius: 0.5,
     orbitSpeed: 0.8,
@@ -111,6 +120,7 @@ export const planets: Planet[] = [
     modelPath: '/models/venus.glb',
     modelScale: 0.06,
     focusScale: 0.45,
+    focusTargetSizeMultiplier: 1,
     radius: 0.08,
     orbitRadius: 0.7,
     orbitSpeed: 0.6,
@@ -131,6 +141,7 @@ export const planets: Planet[] = [
     modelPath: '/models/earth.glb',
     modelScale: 0.06,
     focusScale: 0.5,
+    focusTargetSizeMultiplier: 1,
     radius: 0.085,
     orbitRadius: 0.9,
     orbitSpeed: 0.5,
@@ -151,6 +162,7 @@ export const planets: Planet[] = [
     modelPath: '/models/mars.glb',
     modelScale: 0.05,
     focusScale: 0.45,
+    focusTargetSizeMultiplier: 0.9,
     radius: 0.07,
     orbitRadius: 1.1,
     orbitSpeed: 0.4,
@@ -171,6 +183,7 @@ export const planets: Planet[] = [
     modelPath: '/models/jupiter.glb',
     modelScale: 0.1,
     focusScale: 0.5,
+    focusTargetSizeMultiplier: 0.8,
     radius: 0.15,
     orbitRadius: 1.4,
     orbitSpeed: 0.25,
@@ -191,6 +204,7 @@ export const planets: Planet[] = [
     modelPath: '/models/saturn.glb',
     modelScale: 0.08,
     focusScale: 0.4,
+    focusTargetSizeMultiplier: 0.75,
     radius: 0.13,
     orbitRadius: 1.75,
     orbitSpeed: 0.18,
@@ -211,6 +225,7 @@ export const planets: Planet[] = [
     modelPath: '/models/uranus.glb',
     modelScale: 0.07,
     focusScale: 0.45,
+    focusTargetSizeMultiplier: 0.95,
     radius: 0.11,
     orbitRadius: 2.1,
     orbitSpeed: 0.12,
@@ -231,6 +246,7 @@ export const planets: Planet[] = [
     modelPath: '/models/neptune.glb',
     modelScale: 0.07,
     focusScale: 0.45,
+    focusTargetSizeMultiplier: 0.95,
     radius: 0.10,
     orbitRadius: 2.4,
     orbitSpeed: 0.08,
@@ -249,52 +265,107 @@ export function getPlanetById(id: string): Planet | undefined {
 
 export type DeviceProfile = 'small-phone' | 'phone' | 'large-phone' | 'tablet' | 'desktop';
 
+type DeviceScaleConfig = {
+  solarSystemTargetSize: number;
+  focusPlanetTargetSize: number;
+  solarPositionY: number;
+  focusPositionY: number;
+};
+
+const PROCEDURAL_SOLAR_SYSTEM_DIAMETER = 4.8;
+
 /**
  * Deteksi device profile berdasarkan viewport
  */
 export function getDeviceProfile(): DeviceProfile {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  const viewport = window.visualViewport;
+  const w = viewport?.width ?? window.innerWidth;
+  const h = viewport?.height ?? window.innerHeight;
   const minDim = Math.min(w, h);
   const maxDim = Math.max(w, h);
+  const dpr = window.devicePixelRatio || 1;
+  const isTouchLike = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  const isPortrait = h >= w;
 
+  if (!isTouchLike && minDim >= 600) return 'desktop';
+  if (minDim >= 700) return 'tablet';
   if (minDim <= 360) return 'small-phone';
-  if (minDim <= 414 && maxDim <= 950) return 'phone';
-  if (minDim <= 500 && maxDim <= 1100) return 'large-phone';
-  if (minDim <= 820) return 'tablet';
+  if (minDim <= 390 && maxDim <= 850) return 'phone';
+  if (isPortrait && minDim <= 520 && (maxDim >= 850 || dpr >= 2.5)) return 'large-phone';
+  if (minDim <= 520) return 'phone';
+  if (minDim <= 900) return 'tablet';
   return 'desktop';
 }
 
-const DEVICE_SCALE_MAP: Record<DeviceProfile, { solarSystem: number; focusMultiplier: number; posY: number }> = {
-  'small-phone': { solarSystem: 0.15, focusMultiplier: 0.7, posY: 0.15 },
-  'phone':       { solarSystem: 0.2,  focusMultiplier: 0.85, posY: 0.2 },
-  'large-phone': { solarSystem: 0.25, focusMultiplier: 1.0, posY: 0.2 },
-  'tablet':      { solarSystem: 0.35, focusMultiplier: 1.2, posY: 0.25 },
-  'desktop':     { solarSystem: 0.45, focusMultiplier: 1.4, posY: 0.3 },
+export const DEVICE_TARGET_SIZE_MAP: Record<DeviceProfile, DeviceScaleConfig> = {
+  'small-phone': { solarSystemTargetSize: 0.75, focusPlanetTargetSize: 0.45, solarPositionY: 0.15, focusPositionY: 0.25 },
+  'phone':       { solarSystemTargetSize: 0.85, focusPlanetTargetSize: 0.50, solarPositionY: 0.15, focusPositionY: 0.25 },
+  'large-phone': { solarSystemTargetSize: 0.95, focusPlanetTargetSize: 0.55, solarPositionY: 0.15, focusPositionY: 0.25 },
+  'tablet':      { solarSystemTargetSize: 1.15, focusPlanetTargetSize: 0.70, solarPositionY: 0.18, focusPositionY: 0.28 },
+  'desktop':     { solarSystemTargetSize: 1.25, focusPlanetTargetSize: 0.75, solarPositionY: 0.2, focusPositionY: 0.3 },
 };
 
 /**
- * Scale model solar_system.glb sesuai device
+ * Target ukuran solar_system.glb dalam world unit relatif marker.
  */
-export function getSolarSystemModelScale(): number {
+export function getSolarSystemTargetSize(): number {
   const profile = getDeviceProfile();
-  return DEVICE_SCALE_MAP[profile].solarSystem;
+  return DEVICE_TARGET_SIZE_MAP[profile].solarSystemTargetSize * solarSystemConfig.targetSizeMultiplier;
 }
 
 /**
- * Scale focus planet sesuai device dan data planet
+ * Target ukuran planet focus sebelum multiplier per planet.
+ */
+export function getFocusPlanetTargetSize(): number {
+  const profile = getDeviceProfile();
+  return DEVICE_TARGET_SIZE_MAP[profile].focusPlanetTargetSize;
+}
+
+/**
+ * Target akhir planet focus setelah override per model.
+ */
+export function getPlanetFocusTargetSize(planetId: string): number {
+  const planet = getPlanetById(planetId);
+  const multiplier = planet?.focusTargetSizeMultiplier ?? 1;
+  return getFocusPlanetTargetSize() * multiplier;
+}
+
+/**
+ * Fallback scale procedural solar system jika normalisasi GLB gagal.
+ */
+export function getSolarSystemModelScale(): number {
+  return getSolarSystemTargetSize() / PROCEDURAL_SOLAR_SYSTEM_DIAMETER;
+}
+
+/**
+ * Fallback scale focus planet jika bounding box GLB gagal.
  */
 export function getFocusPlanetScale(planetId: string): number {
   const planet = getPlanetById(planetId);
-  if (!planet) return 0.3;
-  const profile = getDeviceProfile();
-  return planet.focusScale * DEVICE_SCALE_MAP[profile].focusMultiplier;
+  if (!planet) return getFocusPlanetTargetSize() * 0.5;
+  const normalizedFallback = getPlanetFocusTargetSize(planetId) * 0.5;
+  return Math.min(planet.focusScale, normalizedFallback);
 }
 
 /**
- * Posisi model AR di atas marker sesuai device
+ * Posisi solar system di atas marker.
+ */
+export function getSolarSystemModelPosition(): string {
+  const profile = getDeviceProfile();
+  return `0 ${DEVICE_TARGET_SIZE_MAP[profile].solarPositionY} 0`;
+}
+
+/**
+ * Posisi planet focus di atas marker.
+ */
+export function getFocusPlanetModelPosition(): string {
+  const profile = getDeviceProfile();
+  return `0 ${DEVICE_TARGET_SIZE_MAP[profile].focusPositionY} 0`;
+}
+
+/**
+ * Posisi legacy untuk fallback lama.
  */
 export function getARModelPosition(): string {
-  const profile = getDeviceProfile();
-  return `0 ${DEVICE_SCALE_MAP[profile].posY} 0`;
+  return getSolarSystemModelPosition();
 }

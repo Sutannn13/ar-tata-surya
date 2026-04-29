@@ -13,7 +13,9 @@ import {
   planets, sunData, type Planet,
   solarSystemConfig, getPlanetById,
   getSolarSystemModelScale, getFocusPlanetScale,
-  getARModelPosition, getDeviceProfile,
+  getDeviceProfile, getSolarSystemTargetSize,
+  getFocusPlanetTargetSize, getPlanetFocusTargetSize,
+  getSolarSystemModelPosition, getFocusPlanetModelPosition,
 } from '../data/planets';
 import { registerAllComponents } from './aframeComponents';
 
@@ -50,6 +52,16 @@ let offsetZ = 0;
 
 const loadedModels: Set<string> = new Set();
 
+type AutoModelScaleOptions = {
+  targetSize: number;
+  multiplier: number;
+  fallbackScale: number;
+  modelName: string;
+  minScale?: number;
+  maxScale?: number;
+  centerModel?: boolean;
+};
+
 function isDebugEnabled(): boolean {
   const h = window.location.hostname;
   return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || new URLSearchParams(window.location.search).has('debug');
@@ -57,6 +69,30 @@ function isDebugEnabled(): boolean {
 
 function debugLog(...args: unknown[]): void {
   if (isDebugEnabled()) console.log('[AR]', ...args);
+}
+
+function buildAutoModelScaleAttribute(options: AutoModelScaleOptions): string {
+  const minScale = options.minScale ?? 0.02;
+  const maxScale = options.maxScale ?? 1.2;
+  const centerModel = options.centerModel ?? true;
+
+  return [
+    `targetSize: ${options.targetSize}`,
+    `multiplier: ${options.multiplier}`,
+    `minScale: ${minScale}`,
+    `maxScale: ${maxScale}`,
+    `centerModel: ${centerModel}`,
+    `fallbackScale: ${options.fallbackScale}`,
+    `modelName: ${options.modelName}`,
+  ].join('; ');
+}
+
+function setAutoModelScale(el: HTMLElement, options: AutoModelScaleOptions): void {
+  const value = buildAutoModelScaleAttribute(options);
+  if (el.dataset.autoModelScale === value) return;
+
+  el.dataset.autoModelScale = value;
+  el.setAttribute('auto-model-scale', value);
 }
 
 // ===== Adopt AR.js video into container =====
@@ -91,6 +127,8 @@ export function updateDebugPanel(): void {
     { label: 'Focus', value: focusedPlanetId || 'none' },
     { label: 'GLB', value: usingSolarSystemGLB ? 'yes' : 'fallback' },
     { label: 'Device', value: getDeviceProfile() },
+    { label: 'SolarT', value: getSolarSystemTargetSize().toFixed(2) },
+    { label: 'FocusT', value: getFocusPlanetTargetSize().toFixed(2) },
     { label: 'MrkVis', value: String(markerVisible) },
     { label: 'MrkFound', value: String(markerFoundCount) },
     { label: 'Videos', value: String(document.querySelectorAll('video').length) },
@@ -181,6 +219,43 @@ function updateViewportSize(): void {
   const h = vv ? vv.height : window.innerHeight;
   document.documentElement.style.setProperty('--app-width', `${w}px`);
   document.documentElement.style.setProperty('--app-height', `${h}px`);
+  refreshSceneDeviceLayout();
+}
+
+function refreshSceneDeviceLayout(): void {
+  const solarPos = getSolarSystemModelPosition();
+  const focusPos = getFocusPlanetModelPosition();
+  const ssScale = getSolarSystemModelScale();
+
+  if (solarSystemModelRoot) solarSystemModelRoot.setAttribute('position', solarPos);
+  if (focusPlanetRoot) focusPlanetRoot.setAttribute('position', focusPos);
+  if (proceduralRoot) {
+    proceduralRoot.setAttribute('position', solarPos);
+    proceduralRoot.setAttribute('scale', `${ssScale} ${ssScale} ${ssScale}`);
+  }
+
+  const solarGlb = document.getElementById('solar-system-glb');
+  if (solarGlb) {
+    setAutoModelScale(solarGlb, {
+      targetSize: getSolarSystemTargetSize(),
+      multiplier: 1,
+      fallbackScale: getSolarSystemModelScale(),
+      modelName: 'solar_system',
+    });
+  }
+
+  const focusGlb = document.getElementById('focus-planet-glb');
+  if (focusGlb && focusedPlanetId) {
+    const planet = getPlanetById(focusedPlanetId);
+    if (planet) {
+      setAutoModelScale(focusGlb, {
+        targetSize: getFocusPlanetTargetSize(),
+        multiplier: planet.focusTargetSizeMultiplier ?? 1,
+        fallbackScale: getFocusPlanetScale(planet.id),
+        modelName: planet.id,
+      });
+    }
+  }
 }
 
 // ===== Build Scene =====
@@ -230,26 +305,28 @@ function buildScene(onProgress?: ProgressCallback): void {
   markerEl.appendChild(dl2);
 
   // Solar System Model Root (GLB mode)
-  const pos = getARModelPosition();
+  const solarPos = getSolarSystemModelPosition();
+  const focusPos = getFocusPlanetModelPosition();
   const ssScale = getSolarSystemModelScale();
   solarSystemModelRoot = document.createElement('a-entity');
   solarSystemModelRoot.setAttribute('id', 'solar-system-model-root');
-  solarSystemModelRoot.setAttribute('position', pos);
-  solarSystemModelRoot.setAttribute('scale', `${ssScale} ${ssScale} ${ssScale}`);
+  solarSystemModelRoot.setAttribute('position', solarPos);
+  solarSystemModelRoot.setAttribute('scale', '1 1 1');
   solarSystemModelRoot.setAttribute('visible', 'true');
   markerEl.appendChild(solarSystemModelRoot);
 
   // Focus Planet Root
   focusPlanetRoot = document.createElement('a-entity');
   focusPlanetRoot.setAttribute('id', 'focus-planet-root');
-  focusPlanetRoot.setAttribute('position', pos);
+  focusPlanetRoot.setAttribute('position', focusPos);
+  focusPlanetRoot.setAttribute('scale', '1 1 1');
   focusPlanetRoot.setAttribute('visible', 'false');
   markerEl.appendChild(focusPlanetRoot);
 
   // Procedural Root (fallback)
   proceduralRoot = document.createElement('a-entity');
   proceduralRoot.setAttribute('id', 'procedural-root');
-  proceduralRoot.setAttribute('position', pos);
+  proceduralRoot.setAttribute('position', solarPos);
   proceduralRoot.setAttribute('visible', 'false');
   proceduralRoot.setAttribute('scale', `${ssScale} ${ssScale} ${ssScale}`);
   markerEl.appendChild(proceduralRoot);
@@ -284,13 +361,21 @@ function buildScene(onProgress?: ProgressCallback): void {
 function loadSolarSystemGLB(): void {
   if (!solarSystemModelRoot) return;
 
+  const targetSize = getSolarSystemTargetSize();
+  const fallbackScale = getSolarSystemModelScale();
   const glbEntity = document.createElement('a-entity');
   glbEntity.setAttribute('id', 'solar-system-glb');
   glbEntity.setAttribute('gltf-model', `url(${solarSystemConfig.modelPath})`);
+  setAutoModelScale(glbEntity, {
+    targetSize,
+    multiplier: 1,
+    fallbackScale,
+    modelName: 'solar_system',
+  });
   glbEntity.setAttribute('self-rotation', `speed: 8; paused: ${isPaused}`);
 
   glbEntity.addEventListener('model-loaded', () => {
-    debugLog('solar_system.glb loaded');
+    debugLog('solar_system.glb loaded', { targetSize, fallbackScale });
     usingSolarSystemGLB = true;
     if (proceduralRoot) proceduralRoot.setAttribute('visible', 'false');
     if (solarSystemModelRoot) solarSystemModelRoot.setAttribute('visible', 'true');
@@ -423,21 +508,32 @@ export function updateFocusPlanet(planetId: string): void {
   clearFocusPlanet();
   focusedPlanetId = planetId;
 
-  const scale = getFocusPlanetScale(planetId);
+  const fallbackScale = getFocusPlanetScale(planetId);
+  const focusTargetSize = getPlanetFocusTargetSize(planetId);
+  const focusMultiplier = planet.focusTargetSizeMultiplier ?? 1;
   const wrapper = document.createElement('a-entity');
   wrapper.setAttribute('id', 'focus-planet-entity');
-  wrapper.setAttribute('scale', `${scale} ${scale} ${scale}`);
-  wrapper.setAttribute('position', '0 0 0');
+  wrapper.setAttribute('scale', '1 1 1');
+  wrapper.setAttribute('position', planet.modelPositionOffset ?? '0 0 0');
+  if (planet.modelRotationOffset) {
+    wrapper.setAttribute('rotation', planet.modelRotationOffset);
+  }
 
   // Try loading GLB
   const glbEntity = document.createElement('a-entity');
   glbEntity.setAttribute('id', 'focus-planet-glb');
   glbEntity.setAttribute('gltf-model', `url(${planet.modelPath})`);
   glbEntity.setAttribute('class', 'clickable-planet');
+  setAutoModelScale(glbEntity, {
+    targetSize: getFocusPlanetTargetSize(),
+    multiplier: focusMultiplier,
+    fallbackScale,
+    modelName: planet.id,
+  });
   glbEntity.setAttribute('self-rotation', `speed: 25; paused: ${isPaused}`);
 
   glbEntity.addEventListener('model-loaded', () => {
-    debugLog(`${planet.id}.glb loaded for focus`);
+    debugLog(`${planet.id}.glb loaded for focus`, { focusTargetSize, fallbackScale });
     loadedModels.add(planet.id);
   });
 
@@ -448,7 +544,7 @@ export function updateFocusPlanet(planetId: string): void {
     // Add fallback sphere
     const fallback = document.createElement('a-sphere');
     fallback.setAttribute('id', 'focus-planet-fallback');
-    fallback.setAttribute('radius', '1');
+    fallback.setAttribute('radius', String(Math.max(focusTargetSize * 0.5, 0.08)));
     fallback.setAttribute('color', planet.fallbackColor);
     fallback.setAttribute('material', `color: ${planet.fallbackColor}; shader: flat;`);
     fallback.setAttribute('self-rotation', `speed: 25; paused: ${isPaused}`);

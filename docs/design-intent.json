@@ -3,24 +3,27 @@
   "project": {
     "name": "ar-tata-surya",
     "context": "WebAR solar system learning app",
-    "scope": "Bugfix: camera layering, video readiness gating, and debug telemetry. No visual redesign.",
+    "scope": "Bugfix: camera layering, marker-relative GLB scale normalization, compact focus overlays, and debug telemetry. No visual redesign.",
     "assumptionsToValidate": [
       "AR.js injects a camera video element into the DOM.",
-      "Camera permissions are granted before AR start."
+      "Camera permissions are granted before AR start.",
+      "GLB assets may have inconsistent source dimensions and pivot centers."
     ]
   },
   "motionPaletteDecision": {
     "motionDensity": "low-functional",
-    "densityDecisionSource": "Loading and error feedback only to keep camera view dominant.",
+    "densityDecisionSource": "Compact focus controls and debug-only scale telemetry keep the camera view dominant.",
     "requiredInteractionStates": [
       "default",
       "loading",
       "error",
       "success",
-      "transition"
+      "transition",
+      "focus-selected",
+      "detail-expanded"
     ],
     "paletteAutopilotRisk": "avoid opaque overlays that hide camera feed",
-    "spatialDecision": "3d-canvas-required-for-ar-scene"
+    "spatialDecision": "3d-canvas-required-for-ar-scene; model scale is normalized with bounding boxes before display"
   },
   "conceptualAnchor": {
     "name": "Optical Viewfinder Overlay",
@@ -28,13 +31,13 @@
     "agentResearchMode": "no-external-research",
     "sourceDomain": "optical instrumentation",
     "specificReferencePoint": "camera viewfinder frame and matte box",
-    "rationale": "Layering and occlusion control should mimic a viewfinder: camera feed is base, overlays are transparent and precise.",
-    "signatureMotion": "status overlays fade in/out quickly without covering the live feed",
+    "rationale": "Layering, occlusion control, and model fit should mimic a viewfinder: camera feed is base, overlays are transparent and precise, and the object stays inside the marker frame.",
+    "signatureMotion": "status overlays fade in/out quickly while GLB objects rotate slowly inside a bounded marker-relative frame",
     "typographicDecision": "display for titles, body for instructions, monospace for debug data",
     "derivedTokenLogic": {
       "anchorReference": "Optical viewfinder with matte box and HUD markings",
       "morphology": "thin overlay frames and transparent layers",
-      "motion": "short fades for status, no decorative motion"
+      "motion": "short fades for status and slow object rotation for spatial comprehension"
     },
     "visualRiskBudget": "low",
     "motionRiskBudget": "low",
@@ -46,10 +49,10 @@
   "derivedTokenLogic": {
     "anchorReference": "Optical viewfinder with matte box and HUD markings",
     "colorDerivationSource": "Existing dark UI overlays are retained, but camera feed stays visible.",
-    "spacingDerivationSource": "Spacing favors compact overlays to keep the live feed unobstructed.",
+    "spacingDerivationSource": "Spacing favors top chip scanning and bottom compact disclosure to keep the marker center unobstructed.",
     "typographyDerivationSource": "Display and body roles are preserved for clarity in small screens.",
-    "motionDerivationSource": "Short status fades only; no continuous decorative motion.",
-    "validationRule": "No overlay should hide the camera feed when video is ready."
+    "motionDerivationSource": "Short status fades and slow model rotation follow the optical viewfinder anchor without decorative overlay motion.",
+    "validationRule": "No overlay or normalized GLB should hide the camera feed or dominate the marker area when video is ready."
   },
   "libraryResearchStatus": "not-required",
   "libraryDecisions": [
