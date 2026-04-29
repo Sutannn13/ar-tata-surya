@@ -625,11 +625,12 @@ body {
 #ar-page {
   position: fixed;
   inset: 0;
-  background: transparent;
+  background: #000;
   overflow: hidden;
   width: 100vw;
   height: 100vh;
   height: 100dvh; /* dynamic viewport height for mobile */
+  z-index: 0;
 }
 
 /* AR Loading */
@@ -1146,14 +1147,19 @@ body {
 }
 
 /* ===== A-Frame Scene Override ===== */
+/*
+ * Layering (bottom to top):
+ *   video (z:1) → ar-scene-container (z:2) → a-scene (z:3) → canvas (z:4) → UI (z:100)
+ * Video is BELOW canvas. Canvas must be transparent so video shows through.
+ */
 #ar-scene-container {
   position: fixed !important;
   inset: 0;
   width: 100vw;
   height: 100vh;
   height: 100dvh;
-  z-index: 52;
-  background: transparent;
+  z-index: 2;
+  background: transparent !important;
   pointer-events: auto;
   overflow: hidden;
 }
@@ -1164,7 +1170,7 @@ a-scene {
   width: 100vw !important;
   height: 100vh !important;
   height: 100dvh !important;
-  z-index: 53 !important;
+  z-index: 3 !important;
   background: transparent !important;
 }
 
@@ -1176,19 +1182,18 @@ a-scene canvas.a-canvas,
   height: 100vh !important;
   height: 100dvh !important;
   object-fit: cover !important;
-  z-index: 54 !important;
+  z-index: 4 !important;
   background: transparent !important;
 }
 
-video,
-#ar-scene-container video,
-body > video {
+/* AR.js camera video — sits BEHIND the transparent canvas */
+#ar-page video:not(#manual-camera-preview) {
   position: fixed !important;
   inset: 0 !important;
   width: 100vw !important;
   height: 100vh !important;
   height: 100dvh !important;
-  z-index: 51 !important;
+  z-index: 1 !important;
   object-fit: cover !important;
   display: block !important;
   opacity: 1 !important;
