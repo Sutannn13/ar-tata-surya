@@ -55,6 +55,35 @@ let dragStartOffsetZ = 0;
 // Store original materials so we can restore them after highlight
 const originalMaterials: Map<string, string> = new Map();
 
+type VideoDebugEntry = {
+  index: number;
+  isManualPreview: boolean;
+  readyState: number;
+  videoWidth: number;
+  videoHeight: number;
+  paused: boolean;
+  hasSrcObject: boolean;
+  streamActive: boolean;
+  trackSummary: string;
+  isReady: boolean;
+};
+
+type VideoDebugSummary = {
+  total: number;
+  manualCount: number;
+  readyCount: number;
+  liveCount: number;
+  entries: VideoDebugEntry[];
+};
+
+export type VideoReadyResult = {
+  ready: boolean;
+  summary: VideoDebugSummary;
+};
+
+let manualPreviewStream: MediaStream | null = null;
+let manualPreviewVideo: HTMLVideoElement | null = null;
+
 /**
  * Get the base URL for textures — works in both dev and production
  * Uses import.meta.url or falls back to location.origin
@@ -62,6 +91,206 @@ const originalMaterials: Map<string, string> = new Map();
 function getTextureBaseUrl(): string {
   // In Vite, files in /public are served at root
   return window.location.origin + '/';
+}
+
+function isDebugEnabled(): boolean {
+  const hostname = window.location.hostname;
+  const isDev = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+  return isDev || new URLSearchParams(window.location.search).has('debug');
+}
+
+function getVideoElements(): HTMLVideoElement[] {
+  return Array.from(document.querySelectorAll('video')) as HTMLVideoElement[];
+}
+
+function buildTrackSummary(stream: MediaStream | null): { streamActive: boolean; summary: string } {
+  if (!stream) {
+    return { streamActive: false, summary: 'no-stream' };
+  }
+
+  const tracks = stream.getVideoTracks();
+  const liveTracks = tracks.filter((track) => track.readyState === 'live' && track.enabled);
+  const summary = tracks.length
+    ? tracks.map((track) => `${track.readyState}:${track.enabled ? 'enabled' : 'disabled'}`).join(', ')
+    : 'no-tracks';
+
+  return { streamActive: stream.active && liveTracks.length > 0, summary };
+}
+
+function isVideoReady(video: HTMLVideoElement, streamActive: boolean): boolean {
+  const hasFrame = video.readyState >= 2 || (video.videoWidth > 0 && video.videoHeight > 0);
+  return hasFrame && streamActive;
+}
+
+function collectVideoDebugSummary(): VideoDebugSummary {
+  const videos = getVideoElements();
+  const entries = videos.map((video, index) => {
+    const stream = (video.srcObject as MediaStream | null) || null;
+    const trackInfo = buildTrackSummary(stream);
+    const ready = isVideoReady(video, trackInfo.streamActive);
+    const isManualPreview = video.id === 'manual-camera-preview';
+
+    return {
+      index,
+      isManualPreview,
+      readyState: video.readyState,
+      videoWidth: video.videoWidth,
+      videoHeight: video.videoHeight,
+      paused: video.paused,
+      hasSrcObject: !!stream,
+      streamActive: trackInfo.streamActive,
+      trackSummary: trackInfo.summary,
+      isReady: ready,
+    };
+  });
+
+  return {
+    total: entries.length,
+    manualCount: entries.filter((entry) => entry.isManualPreview).length,
+    readyCount: entries.filter((entry) => !entry.isManualPreview && entry.isReady).length,
+    liveCount: entries.filter((entry) => !entry.isManualPreview && entry.streamActive).length,
+    entries,
+  };
+}
+
+function renderDebugVideoPanel(context: string, summary: VideoDebugSummary): void {
+  if (!isDebugEnabled()) return;
+
+  const debugBody = document.getElementById('debug-body');
+  const debugPanel = document.getElementById('debug-panel');
+  if (!debugBody || !debugPanel) return;
+
+  let section = debugBody.querySelector('[data-debug-section="video"]') as HTMLElement | null;
+  if (!section) {
+    section = document.createElement('div');
+    section.dataset.debugSection = 'video';
+    section.style.marginTop = '0.5rem';
+    debugBody.appendChild(section);
+  }
+
+  const rows = [
+    { label: 'Video Context', value: context },
+    { label: 'Video Count', value: String(summary.total) },
+    { label: 'Manual Preview', value: String(summary.manualCount) },
+    { label: 'Ready Videos', value: String(summary.readyCount) },
+    { label: 'Live Streams', value: String(summary.liveCount) },
+  ];
+
+  const videoRows = summary.entries.map((entry) => ({
+    label: `V${entry.index}`,
+    value: `${entry.isManualPreview ? 'manual' : 'arjs'} rs:${entry.readyState} ${entry.videoWidth}x${entry.videoHeight} ${entry.paused ? 'paused' : 'play'} ${entry.streamActive ? 'live' : 'dead'}`,
+  }));
+
+  section.innerHTML = rows
+    .concat(videoRows)
+    .map((row) => `<div class="debug-row"><span class="debug-label">${row.label}</span><span class="debug-value">${row.value}</span></div>`)
+    .join('');
+}
+
+export function debugVideoState(context: string): VideoDebugSummary {
+  const summary = collectVideoDebugSummary();
+  if (isDebugEnabled()) {
+    console.groupCollapsed(`[AR] Video State: ${context}`);
+    console.log('summary', summary);
+    console.table(summary.entries);
+    console.groupEnd();
+  }
+  renderDebugVideoPanel(context, summary);
+  return summary;
+}
+
+export async function testCameraPreview(): Promise<boolean> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return false;
+  }
+
+  const container = document.getElementById('ar-scene-container');
+  if (!container || manualPreviewStream) {
+    return !!manualPreviewStream;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false,
+    });
+
+    const preview = document.createElement('video');
+    preview.setAttribute('playsinline', '');
+    preview.setAttribute('webkit-playsinline', '');
+    preview.muted = true;
+    preview.autoplay = true;
+    preview.playsInline = true;
+    preview.srcObject = stream;
+    preview.id = 'manual-camera-preview';
+    preview.style.position = 'fixed';
+    preview.style.inset = '0';
+    preview.style.width = '100vw';
+    preview.style.height = '100vh';
+    preview.style.objectFit = 'cover';
+    preview.style.zIndex = '51';
+    preview.style.display = 'block';
+    preview.style.opacity = '1';
+    preview.style.visibility = 'visible';
+    preview.style.background = 'transparent';
+
+    container.appendChild(preview);
+    await preview.play().catch(() => undefined);
+
+    manualPreviewStream = stream;
+    manualPreviewVideo = preview;
+    return true;
+  } catch (err) {
+    if (isDebugEnabled()) {
+      console.warn('[AR] Manual camera preview failed:', err);
+    }
+    return false;
+  }
+}
+
+function stopCameraPreview(): void {
+  if (manualPreviewStream) {
+    manualPreviewStream.getTracks().forEach((track) => track.stop());
+    manualPreviewStream = null;
+  }
+  if (manualPreviewVideo && manualPreviewVideo.parentNode) {
+    manualPreviewVideo.parentNode.removeChild(manualPreviewVideo);
+  }
+  manualPreviewVideo = null;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function waitForCameraVideoReady(options?: {
+  timeoutMs?: number;
+  allowManualPreview?: boolean;
+}): Promise<VideoReadyResult> {
+  const timeoutMs = options?.timeoutMs ?? 5000;
+  const allowManualPreview = options?.allowManualPreview ?? false;
+  const start = performance.now();
+  let previewStarted = false;
+
+  while (performance.now() - start < timeoutMs) {
+    fixCameraVideoElement();
+    const summary = collectVideoDebugSummary();
+    if (summary.readyCount > 0 && summary.liveCount > 0) {
+      stopCameraPreview();
+      debugVideoState('video-ready');
+      return { ready: true, summary };
+    }
+
+    if (!previewStarted && allowManualPreview && summary.total === 0 && performance.now() - start > 1200) {
+      previewStarted = await testCameraPreview();
+    }
+
+    await delay(250);
+  }
+
+  stopCameraPreview();
+  const finalSummary = debugVideoState('video-timeout');
+  return { ready: false, summary: finalSummary };
 }
 
 /**
@@ -110,7 +339,7 @@ function buildScene(onProgress?: ProgressCallback): void {
   // Scene
   sceneEl = document.createElement('a-scene');
   sceneEl.setAttribute('embedded', '');
-  sceneEl.setAttribute('arjs', 'sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;');
+  sceneEl.setAttribute('arjs', 'sourceType: webcam; debugUIEnabled: false;');
   sceneEl.setAttribute('renderer', 'logarithmicDepthBuffer: true; precision: mediump; alpha: true; antialias: true;');
   sceneEl.setAttribute('vr-mode-ui', 'enabled: false');
 
@@ -177,6 +406,7 @@ function buildScene(onProgress?: ProgressCallback): void {
   sceneEl.addEventListener('loaded', () => {
     setupDragGesture();
     fixCameraVideoElement();
+    debugVideoState('scene-loaded');
     setTimeout(() => { onProgress?.('scene-ready'); }, 800);
   });
 }
@@ -191,14 +421,24 @@ function fixCameraVideoElement(): void {
     const videos = document.querySelectorAll('video');
     videos.forEach((video) => {
       video.style.position = 'fixed';
-      video.style.top = '0';
-      video.style.left = '0';
+      video.style.inset = '0';
       video.style.width = '100vw';
       video.style.height = '100vh';
       video.style.objectFit = 'cover';
-      video.style.zIndex = '0';
+      video.style.zIndex = '51';
+      video.style.display = 'block';
+      video.style.opacity = '1';
+      video.style.visibility = 'visible';
+      video.style.background = 'transparent';
+      video.style.transform = 'none';
+      (video.style as any).webkitTransform = 'none';
       video.setAttribute('playsinline', '');
       video.setAttribute('webkit-playsinline', '');
+      (video as HTMLVideoElement).playsInline = true;
+
+      if ((video as HTMLVideoElement).srcObject && (video as HTMLVideoElement).paused) {
+        (video as HTMLVideoElement).play().catch(() => undefined);
+      }
     });
   };
 
@@ -537,6 +777,8 @@ export function destroyScene(): void {
       (window as any).__arVideoObserver = null;
     }
   } catch (_e) { /* ignore */ }
+
+  stopCameraPreview();
 
   // Stop camera streams
   try {

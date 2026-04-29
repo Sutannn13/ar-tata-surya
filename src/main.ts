@@ -10,7 +10,7 @@
  */
 
 import './styles/main.css';
-import { initARScene, destroyScene } from './ar/solarSystem';
+import { initARScene, destroyScene, waitForCameraVideoReady } from './ar/solarSystem';
 import { initControls } from './ui/controls';
 
 // ===== DOM Elements =====
@@ -95,6 +95,12 @@ function isSecureForCamera(): boolean {
 // ===== Helper: Check camera support =====
 function hasCameraSupport(): boolean {
   return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+
+function isDebugEnabled(): boolean {
+  const hostname = window.location.hostname;
+  const isDev = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+  return isDev || new URLSearchParams(window.location.search).has('debug');
 }
 
 // ===== Helper: Preflight camera permission =====
@@ -218,6 +224,12 @@ async function openARPage(): Promise<void> {
   // Push state untuk tombol back browser
   history.pushState({ page: 'ar' }, '', '#ar');
 
+  const debugEnabled = isDebugEnabled();
+  let resolveSceneReady: (() => void) | null = null;
+  const sceneReadyPromise = new Promise<void>((resolve) => {
+    resolveSceneReady = resolve;
+  });
+
   try {
     // ===== STEP 1: Security Check =====
     setStepStatus('security', 'active');
@@ -269,19 +281,40 @@ async function openARPage(): Promise<void> {
         loadingStatus.textContent = 'Menyiapkan marker Hiro...';
       } else if (step === 'scene-ready') {
         setStepStatus('marker', 'done');
-        loadingStatus.textContent = 'AR siap! Arahkan kamera ke marker Hiro.';
-        loadingHint.classList.remove('hidden');
-        loadingSpinner.classList.add('hidden');
-
-        // Sembunyikan loading overlay setelah sebentar
-        setTimeout(() => {
-          loadingOverlay.classList.add('hidden');
-        }, 1200);
+        loadingStatus.textContent = 'Menunggu video kamera...';
+        loadingHint.classList.add('hidden');
+        loadingSpinner.classList.remove('hidden');
+        resolveSceneReady?.();
       }
     });
 
     // Inisialisasi UI controls
     initControls();
+
+    await sceneReadyPromise;
+
+    const videoReady = await waitForCameraVideoReady({
+      timeoutMs: 5000,
+      allowManualPreview: debugEnabled,
+    });
+
+    if (!videoReady.ready) {
+      setStepStatus('marker', 'error');
+      showError(
+        'Video Kamera Tidak Tampil',
+        'Kamera berhasil diminta, tetapi video kamera tidak tampil. Kemungkinan elemen video tertutup layer CSS atau browser memblokir stream.',
+        `Video elements: ${videoReady.summary.total}\nManual preview: ${videoReady.summary.manualCount}\nReady videos: ${videoReady.summary.readyCount}\nLive streams: ${videoReady.summary.liveCount}`
+      );
+      return;
+    }
+
+    loadingStatus.textContent = 'AR siap! Arahkan kamera ke marker Hiro.';
+    loadingHint.classList.remove('hidden');
+    loadingSpinner.classList.add('hidden');
+
+    setTimeout(() => {
+      loadingOverlay.classList.add('hidden');
+    }, 600);
 
   } catch (err: any) {
     console.error('Error initializing AR:', err);
