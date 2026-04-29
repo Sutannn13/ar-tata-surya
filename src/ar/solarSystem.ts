@@ -1,72 +1,69 @@
 /**
- * Solar System Builder v5
+ * Solar System Builder v6
  *
- * Fixes:
- * - AR.js video adopted into #ar-scene-container (not left on body)
- * - Stacking context: all AR children inside #ar-page
- * - Aggressive cleanup in destroyScene: videos, canvases, scenes
- * - html/body ar-active class for mobile viewport lock
- * - Transparent renderer canvas
- * - markerFound / markerLost tracking
+ * GLB model support:
+ * - solar_system.glb for main solar system mode
+ * - Individual planet GLB for focus mode
+ * - Fallback to procedural spheres if GLB fails
+ * - Device-aware scaling
+ * - Focus/Solar system mode switching
  */
 
-import { planets, sunData, type Planet } from '../data/planets';
+import {
+  planets, sunData, type Planet,
+  solarSystemConfig, getPlanetById,
+  getSolarSystemModelScale, getFocusPlanetScale,
+  getARModelPosition, getDeviceProfile,
+} from '../data/planets';
 import { registerAllComponents } from './aframeComponents';
 
 declare const AFRAME: any;
 
 export type ProgressCallback = (step: string) => void;
 export type PlanetTapCallback = (planetId: string) => void;
+export type ModeChangeCallback = (mode: 'solar-system' | 'focus', planetId?: string) => void;
 
 let onPlanetTap: PlanetTapCallback | null = null;
-
-const DEFAULT_SCALE = 0.5;
-const MIN_SCALE = 0.2;
-const MAX_SCALE = 2.0;
-const SCALE_STEP = 0.15;
-const DEFAULT_POS_Y = 0.25;
-const FOCUS_SCALE_MULTIPLIER = 1.4;
+let onModeChange: ModeChangeCallback | null = null;
 
 let isPaused = false;
-let currentScale = DEFAULT_SCALE;
-let offsetX = 0;
-let offsetY = DEFAULT_POS_Y;
-let offsetZ = 0;
+let currentMode: 'solar-system' | 'focus' = 'solar-system';
 let focusedPlanetId: string | null = null;
-let solarSystemRoot: HTMLElement | null = null;
+let solarSystemModelRoot: HTMLElement | null = null;
+let focusPlanetRoot: HTMLElement | null = null;
+let proceduralRoot: HTMLElement | null = null;
 let sceneEl: HTMLElement | null = null;
-let highlightedPlanetId: string | null = null;
+let markerEl: HTMLElement | null = null;
 let markerFoundCount = 0;
 let markerLostCount = 0;
 let markerVisible = false;
+let usingSolarSystemGLB = false;
 
 let isDragging = false;
 let dragStartX = 0;
 let dragStartY = 0;
 let dragStartOffsetX = 0;
 let dragStartOffsetZ = 0;
+let offsetX = 0;
+let offsetY = 0;
+let offsetZ = 0;
 
-const originalMaterials: Map<string, string> = new Map();
+const loadedModels: Set<string> = new Set();
 
 function isDebugEnabled(): boolean {
   const h = window.location.hostname;
   return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || new URLSearchParams(window.location.search).has('debug');
 }
 
-function debugLog(...args: any[]): void {
+function debugLog(...args: unknown[]): void {
   if (isDebugEnabled()) console.log('[AR]', ...args);
 }
 
 // ===== Adopt AR.js video into container =====
 
-/**
- * AR.js creates a <video> on <body>. We must move it into #ar-scene-container
- * so it participates in #ar-page's stacking context and doesn't cover the UI.
- */
 function adoptARVideo(): void {
   const container = document.getElementById('ar-scene-container');
   if (!container) return;
-
   document.querySelectorAll('body > video').forEach((video) => {
     debugLog('Adopting body>video into #ar-scene-container');
     container.insertBefore(video, container.firstChild);
@@ -75,9 +72,7 @@ function adoptARVideo(): void {
 
 function getARVideoElement(): HTMLVideoElement | null {
   const videos = Array.from(document.querySelectorAll('video'));
-  for (const v of videos) {
-    if (v.srcObject) return v;
-  }
+  for (const v of videos) { if (v.srcObject) return v; }
   return videos[0] || null;
 }
 
@@ -88,36 +83,19 @@ export function updateDebugPanel(): void {
   const debugBody = document.getElementById('debug-body');
   const debugPanel = document.getElementById('debug-panel');
   if (!debugBody || !debugPanel) return;
-
   debugPanel.classList.remove('hidden');
 
-  const videos = Array.from(document.querySelectorAll('video'));
   const arVideo = getARVideoElement();
-  const canvas = document.querySelector('canvas.a-canvas') as HTMLCanvasElement | null;
-  const scene = sceneEl as any;
-
   const rows: { label: string; value: string }[] = [
-    { label: 'Secure', value: String(window.isSecureContext) },
-    { label: 'Videos', value: String(videos.length) },
-    { label: 'AR Vid', value: arVideo ? `${arVideo.videoWidth}x${arVideo.videoHeight} rs:${arVideo.readyState}` : 'none' },
-    { label: 'Vid Parent', value: arVideo?.parentElement?.id || arVideo?.parentElement?.tagName || 'n/a' },
-  ];
-
-  if (arVideo?.srcObject) {
-    const tracks = (arVideo.srcObject as MediaStream).getVideoTracks();
-    rows.push({ label: 'Track', value: tracks.map((t) => `${t.readyState}:${t.enabled}`).join(',') || 'none' });
-  } else {
-    rows.push({ label: 'Track', value: 'no-stream' });
-  }
-
-  rows.push(
-    { label: 'Scene', value: String(!!scene?.hasLoaded) },
-    { label: 'Renderer', value: String(!!scene?.renderer) },
-    { label: 'Canvas', value: canvas ? 'yes' : 'no' },
-    { label: 'MrkFound', value: String(markerFoundCount) },
-    { label: 'MrkLost', value: String(markerLostCount) },
+    { label: 'Mode', value: currentMode },
+    { label: 'Focus', value: focusedPlanetId || 'none' },
+    { label: 'GLB', value: usingSolarSystemGLB ? 'yes' : 'fallback' },
+    { label: 'Device', value: getDeviceProfile() },
     { label: 'MrkVis', value: String(markerVisible) },
-  );
+    { label: 'MrkFound', value: String(markerFoundCount) },
+    { label: 'Videos', value: String(document.querySelectorAll('video').length) },
+    { label: 'AR Vid', value: arVideo ? `${arVideo.videoWidth}x${arVideo.videoHeight}` : 'none' },
+  ];
 
   debugBody.innerHTML = rows
     .map((r) => `<div class="debug-row"><span class="debug-label">${r.label}</span><span class="debug-value">${r.value}</span></div>`)
@@ -132,17 +110,11 @@ export function updateDebugPanel(): void {
 
 // ===== Video ready =====
 
-export type VideoReadyResult = {
-  ready: boolean;
-  videoWidth: number;
-  videoHeight: number;
-  trackState: string;
-};
+export type VideoReadyResult = { ready: boolean; videoWidth: number; videoHeight: number; trackState: string };
 
 export async function waitForCameraVideoReady(options?: { timeoutMs?: number }): Promise<VideoReadyResult> {
   const timeoutMs = options?.timeoutMs ?? 8000;
   const start = performance.now();
-
   while (performance.now() - start < timeoutMs) {
     adoptARVideo();
     fixCameraVideoElement();
@@ -159,18 +131,13 @@ export async function waitForCameraVideoReady(options?: { timeoutMs?: number }):
     }
     await delay(300);
   }
-
   updateDebugPanel();
   const v = getARVideoElement();
-  return {
-    ready: false,
-    videoWidth: v?.videoWidth ?? 0,
-    videoHeight: v?.videoHeight ?? 0,
-    trackState: v?.srcObject ? (v.srcObject as MediaStream).getVideoTracks().map((t) => t.readyState).join(',') : 'none',
-  };
+  return { ready: false, videoWidth: v?.videoWidth ?? 0, videoHeight: v?.videoHeight ?? 0, trackState: v?.srcObject ? (v.srcObject as MediaStream).getVideoTracks().map((t) => t.readyState).join(',') : 'none' };
 }
 
 export function onPlanetTapEvent(cb: PlanetTapCallback): void { onPlanetTap = cb; }
+export function onModeChangeEvent(cb: ModeChangeCallback): void { onModeChange = cb; }
 
 function getTextureBaseUrl(): string { return window.location.origin + '/'; }
 
@@ -190,18 +157,30 @@ function delay(ms: number): Promise<void> { return new Promise((r) => setTimeout
 // ===== Init =====
 
 export async function initARScene(onProgress?: ProgressCallback): Promise<void> {
-  // Lock viewport for mobile
   document.documentElement.classList.add('ar-active');
   document.body.classList.add('ar-active');
+  updateViewportSize();
+  window.addEventListener('resize', updateViewportSize);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateViewportSize);
+  }
 
   await loadScript('https://aframe.io/releases/1.6.0/aframe.min.js');
   onProgress?.('aframe-loaded');
-
   await loadScript('https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js');
   onProgress?.('arjs-loaded');
-
   registerAllComponents();
   buildScene(onProgress);
+}
+
+// ===== Viewport =====
+
+function updateViewportSize(): void {
+  const vv = window.visualViewport;
+  const w = vv ? vv.width : window.innerWidth;
+  const h = vv ? vv.height : window.innerHeight;
+  document.documentElement.style.setProperty('--app-width', `${w}px`);
+  document.documentElement.style.setProperty('--app-height', `${h}px`);
 }
 
 // ===== Build Scene =====
@@ -217,20 +196,20 @@ function buildScene(onProgress?: ProgressCallback): void {
   sceneEl.setAttribute('renderer', 'logarithmicDepthBuffer: true; precision: mediump; alpha: true; antialias: true;');
   sceneEl.setAttribute('vr-mode-ui', 'enabled: false');
 
-  const marker = document.createElement('a-marker');
-  marker.setAttribute('preset', 'hiro');
-  marker.setAttribute('smooth', 'true');
-  marker.setAttribute('smoothCount', '5');
-  marker.setAttribute('smoothTolerance', '0.01');
-  marker.setAttribute('smoothThreshold', '2');
+  markerEl = document.createElement('a-marker');
+  markerEl.setAttribute('preset', 'hiro');
+  markerEl.setAttribute('smooth', 'true');
+  markerEl.setAttribute('smoothCount', '5');
+  markerEl.setAttribute('smoothTolerance', '0.01');
+  markerEl.setAttribute('smoothThreshold', '2');
 
-  marker.addEventListener('markerFound', () => {
+  markerEl.addEventListener('markerFound', () => {
     markerFoundCount++; markerVisible = true;
     debugLog('markerFound', markerFoundCount);
     updateDebugPanel();
     updateMarkerStatus(true);
   });
-  marker.addEventListener('markerLost', () => {
+  markerEl.addEventListener('markerLost', () => {
     markerLostCount++; markerVisible = false;
     debugLog('markerLost', markerLostCount);
     updateDebugPanel();
@@ -240,27 +219,48 @@ function buildScene(onProgress?: ProgressCallback): void {
   // Lights
   const al = document.createElement('a-light');
   al.setAttribute('type', 'ambient'); al.setAttribute('color', '#FFF'); al.setAttribute('intensity', '1.8');
-  marker.appendChild(al);
+  markerEl.appendChild(al);
   const dl = document.createElement('a-light');
   dl.setAttribute('type', 'directional'); dl.setAttribute('color', '#FFF8E7');
   dl.setAttribute('intensity', '0.8'); dl.setAttribute('position', '1 2 1');
-  marker.appendChild(dl);
+  markerEl.appendChild(dl);
   const dl2 = document.createElement('a-light');
   dl2.setAttribute('type', 'directional'); dl2.setAttribute('color', '#E8E0FF');
   dl2.setAttribute('intensity', '0.4'); dl2.setAttribute('position', '-1 -1 -1');
-  marker.appendChild(dl2);
+  markerEl.appendChild(dl2);
 
-  solarSystemRoot = document.createElement('a-entity');
-  solarSystemRoot.setAttribute('id', 'solar-system-root');
-  solarSystemRoot.setAttribute('smooth-transform', `targetX: ${offsetX}; targetY: ${offsetY}; targetZ: ${offsetZ}; targetScale: ${currentScale}; active: true; lerpSpeed: 5;`);
-  solarSystemRoot.setAttribute('position', `${offsetX} ${offsetY} ${offsetZ}`);
-  solarSystemRoot.setAttribute('scale', `${currentScale} ${currentScale} ${currentScale}`);
+  // Solar System Model Root (GLB mode)
+  const pos = getARModelPosition();
+  const ssScale = getSolarSystemModelScale();
+  solarSystemModelRoot = document.createElement('a-entity');
+  solarSystemModelRoot.setAttribute('id', 'solar-system-model-root');
+  solarSystemModelRoot.setAttribute('position', pos);
+  solarSystemModelRoot.setAttribute('scale', `${ssScale} ${ssScale} ${ssScale}`);
+  solarSystemModelRoot.setAttribute('visible', 'true');
+  markerEl.appendChild(solarSystemModelRoot);
 
-  buildSun(solarSystemRoot);
-  planets.forEach((p) => buildPlanetGroup(solarSystemRoot!, p));
+  // Focus Planet Root
+  focusPlanetRoot = document.createElement('a-entity');
+  focusPlanetRoot.setAttribute('id', 'focus-planet-root');
+  focusPlanetRoot.setAttribute('position', pos);
+  focusPlanetRoot.setAttribute('visible', 'false');
+  markerEl.appendChild(focusPlanetRoot);
 
-  marker.appendChild(solarSystemRoot);
-  sceneEl.appendChild(marker);
+  // Procedural Root (fallback)
+  proceduralRoot = document.createElement('a-entity');
+  proceduralRoot.setAttribute('id', 'procedural-root');
+  proceduralRoot.setAttribute('position', pos);
+  proceduralRoot.setAttribute('visible', 'false');
+  proceduralRoot.setAttribute('scale', `${ssScale} ${ssScale} ${ssScale}`);
+  markerEl.appendChild(proceduralRoot);
+
+  // Build procedural fallback (hidden by default)
+  buildProceduralSolarSystem(proceduralRoot);
+
+  // Load solar_system.glb
+  loadSolarSystemGLB();
+
+  sceneEl.appendChild(markerEl);
 
   const cam = document.createElement('a-entity');
   cam.setAttribute('camera', '');
@@ -281,100 +281,55 @@ function buildScene(onProgress?: ProgressCallback): void {
   });
 }
 
-function forceTransparentRenderer(): void {
-  if (!sceneEl) return;
-  const renderer = (sceneEl as any).renderer;
-  if (renderer) {
-    renderer.setClearColor(0x000000, 0);
-    renderer.autoClear = true;
-  }
-  const canvas = document.querySelector('canvas.a-canvas') as HTMLCanvasElement | null;
-  if (canvas) canvas.style.background = 'transparent';
-  if (sceneEl) (sceneEl as HTMLElement).style.background = 'transparent';
+function loadSolarSystemGLB(): void {
+  if (!solarSystemModelRoot) return;
+
+  const glbEntity = document.createElement('a-entity');
+  glbEntity.setAttribute('id', 'solar-system-glb');
+  glbEntity.setAttribute('gltf-model', `url(${solarSystemConfig.modelPath})`);
+  glbEntity.setAttribute('self-rotation', `speed: 8; paused: ${isPaused}`);
+
+  glbEntity.addEventListener('model-loaded', () => {
+    debugLog('solar_system.glb loaded');
+    usingSolarSystemGLB = true;
+    if (proceduralRoot) proceduralRoot.setAttribute('visible', 'false');
+    if (solarSystemModelRoot) solarSystemModelRoot.setAttribute('visible', 'true');
+    updateDebugPanel();
+  });
+
+  glbEntity.addEventListener('model-error', () => {
+    console.warn('[AR] solar_system.glb failed, using fallback');
+    usingSolarSystemGLB = false;
+    if (solarSystemModelRoot) solarSystemModelRoot.setAttribute('visible', 'false');
+    if (proceduralRoot) proceduralRoot.setAttribute('visible', 'true');
+    updateDebugPanel();
+  });
+
+  solarSystemModelRoot.appendChild(glbEntity);
 }
 
-function updateMarkerStatus(found: boolean): void {
-  const hint = document.getElementById('loading-hint');
-  if (hint && !document.getElementById('ar-loading')?.classList.contains('hidden')) {
-    hint.textContent = found ? '✅ Marker terdeteksi!' : 'Arahkan kamera ke marker Hiro';
-  }
-}
+// ===== Procedural Fallback =====
 
-/**
- * Style AR.js video inside #ar-scene-container.
- * Uses position:absolute relative to the container, NOT position:fixed on body.
- */
-function fixCameraVideoElement(): void {
-  const apply = () => {
-    const container = document.getElementById('ar-scene-container');
-    if (!container) return;
-
-    // First adopt any stray body videos
-    adoptARVideo();
-
-    container.querySelectorAll('video').forEach((video) => {
-      video.style.position = 'absolute';
-      video.style.top = '0';
-      video.style.left = '0';
-      video.style.width = '100%';
-      video.style.height = '100%';
-      video.style.objectFit = 'cover';
-      video.style.zIndex = '1';
-      video.style.display = 'block';
-      video.style.opacity = '1';
-      video.style.visibility = 'visible';
-      video.style.background = 'transparent';
-      video.style.transform = 'none';
-      (video.style as any).webkitTransform = 'none';
-      video.style.pointerEvents = 'none';
-      video.setAttribute('playsinline', '');
-      video.setAttribute('webkit-playsinline', '');
-      video.playsInline = true;
-      if (video.srcObject && video.paused) {
-        video.play().catch(() => undefined);
-      }
-    });
-  };
-
-  apply();
-  setTimeout(apply, 500);
-  setTimeout(apply, 1500);
-  setTimeout(apply, 3000);
-
-  if (!(window as any).__arVideoObserver) {
-    const observer = new MutationObserver(() => {
-      adoptARVideo();
-      apply();
-      forceTransparentRenderer();
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    (window as any).__arVideoObserver = observer;
-  }
-}
-
-// ===== Build Sun / Planets =====
-
-function buildSun(parent: HTMLElement): void {
+function buildProceduralSolarSystem(parent: HTMLElement): void {
   const baseUrl = getTextureBaseUrl();
+  // Sun
   const sun = document.createElement('a-sphere');
-  sun.setAttribute('id', 'planet-sun');
   sun.setAttribute('radius', String(sunData.radius));
   sun.setAttribute('position', '0 0 0');
   sun.setAttribute('self-rotation', `speed: 10; paused: ${isPaused}`);
   sun.setAttribute('material', `color: ${sunData.color}; shader: flat;`);
-  tryLoadTexture(sun, baseUrl + sunData.texturePath, sunData.color, 'sun');
+  tryLoadTexture(sun, baseUrl + sunData.texturePath, sunData.color);
   const light = document.createElement('a-light');
   light.setAttribute('type', 'point'); light.setAttribute('intensity', '0.5');
   light.setAttribute('distance', '6'); light.setAttribute('color', '#FFF8E7');
   sun.appendChild(light);
   parent.appendChild(sun);
+
+  planets.forEach((p) => buildProceduralPlanet(parent, p, baseUrl));
 }
 
-function buildPlanetGroup(parent: HTMLElement, planet: Planet): void {
-  const baseUrl = getTextureBaseUrl();
+function buildProceduralPlanet(parent: HTMLElement, planet: Planet, baseUrl: string): void {
   const group = document.createElement('a-entity');
-  group.setAttribute('id', `orbit-group-${planet.id}`);
-
   const orbitPath = document.createElement('a-ring');
   orbitPath.setAttribute('radius-inner', String(planet.orbitRadius - 0.003));
   orbitPath.setAttribute('radius-outer', String(planet.orbitRadius + 0.003));
@@ -384,18 +339,15 @@ function buildPlanetGroup(parent: HTMLElement, planet: Planet): void {
   group.appendChild(orbitPath);
 
   const pivot = document.createElement('a-entity');
-  pivot.setAttribute('id', `orbit-pivot-${planet.id}`);
   pivot.setAttribute('orbit-rotation', `speed: ${planet.orbitSpeed * 40}; paused: ${isPaused}`);
-
   const sphere = document.createElement('a-sphere');
-  sphere.setAttribute('id', `planet-${planet.id}`);
-  sphere.setAttribute('class', 'clickable-planet planet-entity');
+  sphere.setAttribute('class', 'clickable-planet');
   sphere.setAttribute('data-planet-id', planet.id);
   sphere.setAttribute('radius', String(planet.radius));
   sphere.setAttribute('position', `${planet.orbitRadius} 0 0`);
   sphere.setAttribute('self-rotation', `speed: ${planet.rotationSpeed * 50}; paused: ${isPaused}`);
   sphere.setAttribute('material', `color: ${planet.color}; shader: flat;`);
-  tryLoadTexture(sphere, baseUrl + planet.texturePath, planet.color, planet.id);
+  tryLoadTexture(sphere, baseUrl + planet.texturePath, planet.color);
   sphere.addEventListener('click', () => onPlanetTap?.(planet.id));
   pivot.appendChild(sphere);
 
@@ -408,7 +360,6 @@ function buildPlanetGroup(parent: HTMLElement, planet: Planet): void {
     ring.setAttribute('position', `${planet.orbitRadius} 0 0`);
     ring.setAttribute('segments-theta', '64');
     ring.setAttribute('material', 'side: double; transparent: true; shader: flat;');
-    tryLoadRingTexture(ring, baseUrl);
     pivot.appendChild(ring);
   }
 
@@ -416,19 +367,167 @@ function buildPlanetGroup(parent: HTMLElement, planet: Planet): void {
   parent.appendChild(group);
 }
 
-function tryLoadTexture(el: HTMLElement, path: string, fallback: string, id: string): void {
+function tryLoadTexture(el: HTMLElement, path: string, fallback: string): void {
   const img = new Image(); img.crossOrigin = 'anonymous';
-  img.onload = () => { const m = `src: url(${path}); shader: flat;`; el.setAttribute('material', m); originalMaterials.set(id, m); };
-  img.onerror = () => { const m = `color: ${fallback}; shader: flat;`; el.setAttribute('material', m); originalMaterials.set(id, m); };
+  img.onload = () => el.setAttribute('material', `src: url(${path}); shader: flat;`);
+  img.onerror = () => el.setAttribute('material', `color: ${fallback}; shader: flat;`);
   img.src = path;
 }
 
-function tryLoadRingTexture(el: HTMLElement, baseUrl: string): void {
-  const p = baseUrl + 'textures/saturn-ring.png';
-  const img = new Image(); img.crossOrigin = 'anonymous';
-  img.onload = () => { el.setAttribute('material', `src: url(${p}); side: double; transparent: true; shader: flat;`); };
-  img.onerror = () => { /* keep fallback */ };
-  img.src = p;
+// ===== FASE 4 — Focus Mode =====
+
+export function enterSolarSystemMode(): void {
+  currentMode = 'solar-system';
+  focusedPlanetId = null;
+  clearFocusPlanet();
+
+  if (focusPlanetRoot) focusPlanetRoot.setAttribute('visible', 'false');
+
+  if (usingSolarSystemGLB) {
+    if (solarSystemModelRoot) solarSystemModelRoot.setAttribute('visible', 'true');
+    if (proceduralRoot) proceduralRoot.setAttribute('visible', 'false');
+  } else {
+    if (solarSystemModelRoot) solarSystemModelRoot.setAttribute('visible', 'false');
+    if (proceduralRoot) proceduralRoot.setAttribute('visible', 'true');
+  }
+
+  onModeChange?.('solar-system');
+  updateDebugPanel();
+  debugLog('Entered solar-system mode');
+}
+
+export function enterFocusMode(planetId: string): void {
+  const planet = getPlanetById(planetId);
+  if (!planet) return;
+
+  currentMode = 'focus';
+  focusedPlanetId = planetId;
+
+  // Hide solar system
+  if (solarSystemModelRoot) solarSystemModelRoot.setAttribute('visible', 'false');
+  if (proceduralRoot) proceduralRoot.setAttribute('visible', 'false');
+
+  // Show focus root
+  if (focusPlanetRoot) focusPlanetRoot.setAttribute('visible', 'true');
+
+  updateFocusPlanet(planetId);
+  onModeChange?.('focus', planetId);
+  updateDebugPanel();
+  debugLog('Entered focus mode:', planetId);
+}
+
+export function updateFocusPlanet(planetId: string): void {
+  const planet = getPlanetById(planetId);
+  if (!planet || !focusPlanetRoot) return;
+
+  clearFocusPlanet();
+  focusedPlanetId = planetId;
+
+  const scale = getFocusPlanetScale(planetId);
+  const wrapper = document.createElement('a-entity');
+  wrapper.setAttribute('id', 'focus-planet-entity');
+  wrapper.setAttribute('scale', `${scale} ${scale} ${scale}`);
+  wrapper.setAttribute('position', '0 0 0');
+
+  // Try loading GLB
+  const glbEntity = document.createElement('a-entity');
+  glbEntity.setAttribute('id', 'focus-planet-glb');
+  glbEntity.setAttribute('gltf-model', `url(${planet.modelPath})`);
+  glbEntity.setAttribute('class', 'clickable-planet');
+  glbEntity.setAttribute('self-rotation', `speed: 25; paused: ${isPaused}`);
+
+  glbEntity.addEventListener('model-loaded', () => {
+    debugLog(`${planet.id}.glb loaded for focus`);
+    loadedModels.add(planet.id);
+  });
+
+  glbEntity.addEventListener('model-error', () => {
+    console.warn(`[AR] ${planet.id}.glb failed, using fallback sphere`);
+    // Remove failed glb entity
+    glbEntity.remove();
+    // Add fallback sphere
+    const fallback = document.createElement('a-sphere');
+    fallback.setAttribute('id', 'focus-planet-fallback');
+    fallback.setAttribute('radius', '1');
+    fallback.setAttribute('color', planet.fallbackColor);
+    fallback.setAttribute('material', `color: ${planet.fallbackColor}; shader: flat;`);
+    fallback.setAttribute('self-rotation', `speed: 25; paused: ${isPaused}`);
+    wrapper.appendChild(fallback);
+  });
+
+  wrapper.appendChild(glbEntity);
+  focusPlanetRoot.appendChild(wrapper);
+}
+
+export function clearFocusPlanet(): void {
+  if (!focusPlanetRoot) return;
+  while (focusPlanetRoot.firstChild) {
+    focusPlanetRoot.removeChild(focusPlanetRoot.firstChild);
+  }
+}
+
+export function exitFocusMode(): void {
+  enterSolarSystemMode();
+}
+
+export function resetView(): void {
+  if (currentMode === 'focus') {
+    enterSolarSystemMode();
+  }
+  isPaused = false;
+  updatePauseState();
+}
+
+export function getCurrentMode(): 'solar-system' | 'focus' { return currentMode; }
+export function getFocusedPlanetId(): string | null { return focusedPlanetId; }
+
+// ===== Renderer / Video =====
+
+function forceTransparentRenderer(): void {
+  if (!sceneEl) return;
+  const renderer = (sceneEl as any).renderer;
+  if (renderer) { renderer.setClearColor(0x000000, 0); renderer.autoClear = true; }
+  const canvas = document.querySelector('canvas.a-canvas') as HTMLCanvasElement | null;
+  if (canvas) canvas.style.background = 'transparent';
+  if (sceneEl) (sceneEl as HTMLElement).style.background = 'transparent';
+}
+
+function updateMarkerStatus(found: boolean): void {
+  const hint = document.getElementById('loading-hint');
+  if (hint && !document.getElementById('ar-loading')?.classList.contains('hidden')) {
+    hint.textContent = found ? '✅ Marker terdeteksi!' : 'Arahkan kamera ke marker Hiro';
+  }
+}
+
+function fixCameraVideoElement(): void {
+  const apply = () => {
+    const container = document.getElementById('ar-scene-container');
+    if (!container) return;
+    adoptARVideo();
+    container.querySelectorAll('video').forEach((video) => {
+      video.style.position = 'absolute';
+      video.style.top = '0'; video.style.left = '0';
+      video.style.width = '100%'; video.style.height = '100%';
+      video.style.objectFit = 'cover'; video.style.zIndex = '1';
+      video.style.display = 'block'; video.style.opacity = '1';
+      video.style.visibility = 'visible'; video.style.background = 'transparent';
+      video.style.transform = 'none';
+      (video.style as any).webkitTransform = 'none';
+      video.style.pointerEvents = 'none';
+      video.setAttribute('playsinline', '');
+      video.setAttribute('webkit-playsinline', '');
+      video.playsInline = true;
+      if (video.srcObject && video.paused) video.play().catch(() => undefined);
+    });
+  };
+  apply();
+  setTimeout(apply, 500); setTimeout(apply, 1500); setTimeout(apply, 3000);
+
+  if (!(window as any).__arVideoObserver) {
+    const observer = new MutationObserver(() => { adoptARVideo(); apply(); forceTransparentRenderer(); });
+    observer.observe(document.body, { childList: true, subtree: true });
+    (window as any).__arVideoObserver = observer;
+  }
 }
 
 // ===== Drag =====
@@ -460,7 +559,6 @@ function onTouchMove(e: TouchEvent): void {
   const t = e.touches[0];
   offsetX = dragStartOffsetX + (t.clientX - dragStartX) * 0.005;
   offsetZ = dragStartOffsetZ + (t.clientY - dragStartY) * 0.005;
-  applyRootTransform();
 }
 
 function onTouchEnd(): void { isDragging = false; }
@@ -475,78 +573,36 @@ function updatePauseState(): void {
   sceneEl.querySelectorAll('[self-rotation]').forEach((el: any) => el.setAttribute('self-rotation', 'paused', isPaused));
 }
 
-export function zoomIn(): number { currentScale = Math.min(currentScale + SCALE_STEP, MAX_SCALE); applyRootTransform(); return currentScale; }
-export function zoomOut(): number { currentScale = Math.max(currentScale - SCALE_STEP, MIN_SCALE); applyRootTransform(); return currentScale; }
-
-export function focusPlanet(planetId: string): void {
-  if (!sceneEl) return;
-  const planet = planets.find((p) => p.id === planetId);
-  if (!planet) return;
-  focusedPlanetId = planetId;
-  currentScale = Math.min(DEFAULT_SCALE * FOCUS_SCALE_MULTIPLIER, MAX_SCALE);
-  offsetX = 0; offsetY = DEFAULT_POS_Y + 0.05; offsetZ = 0;
-  applyRootTransform();
+export function zoomIn(): void {
+  const root = currentMode === 'focus' ? focusPlanetRoot : (usingSolarSystemGLB ? solarSystemModelRoot : proceduralRoot);
+  if (!root) return;
+  const s = (root as any).object3D?.scale;
+  if (s) { const ns = Math.min(s.x * 1.2, 3); root.setAttribute('scale', `${ns} ${ns} ${ns}`); }
 }
 
-export function resetView(): void {
-  currentScale = DEFAULT_SCALE; offsetX = 0; offsetY = DEFAULT_POS_Y; offsetZ = 0;
-  isPaused = false; focusedPlanetId = null; highlightedPlanetId = null;
-  applyRootTransform(); updatePauseState(); clearHighlight();
-}
-
-function applyRootTransform(): void {
-  if (!solarSystemRoot) return;
-  solarSystemRoot.setAttribute('smooth-transform', `targetX: ${offsetX}; targetY: ${offsetY}; targetZ: ${offsetZ}; targetScale: ${currentScale}; active: true; lerpSpeed: 5;`);
-}
-
-export function highlightPlanet(planetId: string): void {
-  if (!sceneEl) return;
-  clearHighlight(); highlightedPlanetId = planetId;
-  const pe = sceneEl.querySelector(`#planet-${planetId}`) as any;
-  if (pe) { const r = parseFloat(pe.getAttribute('radius') || '0.1'); pe.setAttribute('data-original-radius', String(r)); pe.setAttribute('radius', String(r * 1.25)); }
-  const og = sceneEl.querySelector(`#orbit-group-${planetId}`);
-  if (og) { const ring = og.querySelector('a-ring'); if (ring) { ring.setAttribute('opacity', '0.35'); ring.setAttribute('color', '#818cf8'); } }
-}
-
-function clearHighlight(): void {
-  if (!sceneEl) return;
-  sceneEl.querySelectorAll('.planet-entity').forEach((el: any) => {
-    const or = el.getAttribute('data-original-radius');
-    if (or) { el.setAttribute('radius', or); el.removeAttribute('data-original-radius'); }
-  });
-  sceneEl.querySelectorAll('a-ring[opacity]').forEach((ring) => {
-    if (parseFloat(ring.getAttribute('radius-inner') || '0') > 0.1) return;
-    ring.setAttribute('opacity', '0.1'); ring.setAttribute('color', '#FFFFFF');
-  });
-  highlightedPlanetId = null;
+export function zoomOut(): void {
+  const root = currentMode === 'focus' ? focusPlanetRoot : (usingSolarSystemGLB ? solarSystemModelRoot : proceduralRoot);
+  if (!root) return;
+  const s = (root as any).object3D?.scale;
+  if (s) { const ns = Math.max(s.x * 0.8, 0.05); root.setAttribute('scale', `${ns} ${ns} ${ns}`); }
 }
 
 // ===== Destroy =====
 
 export function destroyScene(): void {
-  debugLog('destroyScene: before cleanup',
-    'videos:', document.querySelectorAll('video').length,
-    'canvases:', document.querySelectorAll('canvas.a-canvas').length,
-    'scenes:', document.querySelectorAll('a-scene').length
-  );
+  debugLog('destroyScene: start');
 
-  // 1. Disconnect observer
-  try {
-    const obs = (window as any).__arVideoObserver;
-    if (obs) { obs.disconnect(); (window as any).__arVideoObserver = null; }
-  } catch (_) { /* */ }
+  try { const obs = (window as any).__arVideoObserver; if (obs) { obs.disconnect(); (window as any).__arVideoObserver = null; } } catch (_) { /* */ }
 
-  // 2. Stop ALL video streams and remove videos
   document.querySelectorAll('video').forEach((video) => {
     try {
       const stream = (video as HTMLVideoElement).srcObject as MediaStream;
-      if (stream) { stream.getTracks().forEach((t) => t.stop()); }
+      if (stream) stream.getTracks().forEach((t) => t.stop());
       (video as HTMLVideoElement).srcObject = null;
       video.remove();
     } catch (_) { /* */ }
   });
 
-  // 3. Remove drag listeners
   const canvas = document.querySelector('canvas.a-canvas') as HTMLCanvasElement;
   if (canvas) {
     canvas.removeEventListener('touchstart', onTouchStart);
@@ -554,35 +610,35 @@ export function destroyScene(): void {
     canvas.removeEventListener('touchend', onTouchEnd);
   }
 
-  // 4. Dispose and remove a-scene
   if (sceneEl) {
     try { (sceneEl as any).renderer?.dispose?.(); } catch (_) { /* */ }
     sceneEl.remove();
   }
 
-  // 5. Remove any remaining a-scene / canvas from DOM
   document.querySelectorAll('a-scene').forEach((s) => s.remove());
   document.querySelectorAll('canvas.a-canvas').forEach((c) => c.remove());
 
-  // 6. Clear container
   const container = document.getElementById('ar-scene-container');
   if (container) container.innerHTML = '';
 
-  // 7. Remove ar-active class
+  // Remove viewport listener
+  window.removeEventListener('resize', updateViewportSize);
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', updateViewportSize);
+  }
+
   document.documentElement.classList.remove('ar-active');
   document.body.classList.remove('ar-active');
+  document.documentElement.style.removeProperty('--app-width');
+  document.documentElement.style.removeProperty('--app-height');
 
-  // 8. Reset state
-  sceneEl = null; solarSystemRoot = null;
-  isPaused = false; currentScale = DEFAULT_SCALE;
-  offsetX = 0; offsetY = DEFAULT_POS_Y; offsetZ = 0;
-  highlightedPlanetId = null; focusedPlanetId = null;
-  onPlanetTap = null; originalMaterials.clear();
+  sceneEl = null; markerEl = null;
+  solarSystemModelRoot = null; focusPlanetRoot = null; proceduralRoot = null;
+  isPaused = false; currentMode = 'solar-system';
+  focusedPlanetId = null; onPlanetTap = null; onModeChange = null;
+  usingSolarSystemGLB = false; loadedModels.clear();
   markerFoundCount = 0; markerLostCount = 0; markerVisible = false;
+  offsetX = 0; offsetY = 0; offsetZ = 0;
 
-  debugLog('destroyScene: after cleanup',
-    'videos:', document.querySelectorAll('video').length,
-    'canvases:', document.querySelectorAll('canvas.a-canvas').length,
-    'scenes:', document.querySelectorAll('a-scene').length
-  );
+  debugLog('destroyScene: done');
 }

@@ -1,11 +1,12 @@
 /**
- * UI Controls v2
+ * UI Controls v3
  * 
  * Fitur:
  * - Planet selector chips
  * - Info panel compact/expand
- * - Tap planet 3D → selectPlanet
- * - Smooth focus on select
+ * - Focus mode: planet GLB individu
+ * - Solar system mode: solar_system.glb
+ * - Tombol "Kembali ke Tata Surya"
  * - Tombol pause/play, zoom, reset, back
  */
 
@@ -15,9 +16,11 @@ import {
   zoomIn,
   zoomOut,
   resetView,
-  highlightPlanet,
-  focusPlanet,
+  enterFocusMode,
+  exitFocusMode,
   onPlanetTapEvent,
+  onModeChangeEvent,
+  getCurrentMode,
 } from '../ar/solarSystem';
 
 let selectedPlanetId: string | null = null;
@@ -30,10 +33,20 @@ export function initControls(): void {
   buildPlanetChips();
   bindControlButtons();
   setupPanelToggle();
+  setupBackToSolarSystem();
 
   // Register callback untuk tap planet 3D
   onPlanetTapEvent((planetId: string) => {
     selectPlanet(planetId);
+  });
+
+  // Register callback untuk mode change
+  onModeChangeEvent((mode, planetId) => {
+    if (mode === 'solar-system') {
+      resetUIState();
+    } else if (mode === 'focus' && planetId) {
+      updateUIForFocus(planetId);
+    }
   });
 }
 
@@ -52,7 +65,7 @@ function buildPlanetChips(): void {
     chip.setAttribute('data-planet-id', planet.id);
     chip.innerHTML = `
       <span class="planet-chip-dot" style="background: ${planet.color}"></span>
-      ${planet.name}
+      ${planet.displayName}
     `;
 
     chip.addEventListener('click', () => selectPlanet(planet.id));
@@ -61,7 +74,7 @@ function buildPlanetChips(): void {
 }
 
 /**
- * Pilih planet — update UI, highlight, dan focus
+ * Pilih planet — masuk focus mode
  */
 export function selectPlanet(planetId: string): void {
   const planet = getPlanetById(planetId);
@@ -69,9 +82,23 @@ export function selectPlanet(planetId: string): void {
 
   selectedPlanetId = planetId;
 
+  // Enter focus mode (GLB individual planet)
+  enterFocusMode(planetId);
+
+  // UI updates handled by onModeChange callback
+}
+
+/**
+ * Update UI saat masuk focus mode
+ */
+function updateUIForFocus(planetId: string): void {
+  const planet = getPlanetById(planetId);
+  if (!planet) return;
+
+  selectedPlanetId = planetId;
+
   // Update chip active state
-  const chips = document.querySelectorAll('.planet-chip');
-  chips.forEach((chip) => {
+  document.querySelectorAll('.planet-chip').forEach((chip) => {
     const id = chip.getAttribute('data-planet-id');
     chip.classList.toggle('active', id === planetId);
   });
@@ -82,18 +109,15 @@ export function selectPlanet(planetId: string): void {
     activeChip.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   }
 
-  // Update info panel (compact mode)
+  // Update info panel
   updateInfoPanel(planet);
 
-  // Highlight planet di scene AR
-  highlightPlanet(planetId);
-
-  // Smooth focus ke planet
-  focusPlanet(planetId);
+  // Show back button
+  showBackToSolarSystem(true);
 }
 
 /**
- * Update panel informasi planet — compact default
+ * Update panel informasi planet
  */
 function updateInfoPanel(planet: Planet): void {
   const panel = document.getElementById('planet-info-panel');
@@ -105,7 +129,7 @@ function updateInfoPanel(planet: Planet): void {
   const factText = document.getElementById('planet-info-fact-text');
   const expandBtn = document.getElementById('btn-expand-panel');
 
-  if (nameEl) nameEl.textContent = planet.name;
+  if (nameEl) nameEl.textContent = planet.displayName;
   if (orderEl) orderEl.textContent = `Planet ke-${planet.orderFromSun} dari Matahari`;
   if (descEl) descEl.textContent = planet.shortDescription;
   if (colorEl) colorEl.style.background = planet.color;
@@ -116,13 +140,13 @@ function updateInfoPanel(planet: Planet): void {
 
   if (panel) {
     panel.classList.add('has-planet');
-    // Default: compact (collapsed)
     panel.classList.remove('expanded');
     panelExpanded = false;
   }
 
   if (expandBtn) {
     expandBtn.classList.remove('hidden');
+    expandBtn.textContent = '▲ Detail';
   }
 }
 
@@ -140,6 +164,26 @@ function setupPanelToggle(): void {
       panel.classList.toggle('expanded', panelExpanded);
       expandBtn.textContent = panelExpanded ? '▼ Tutup' : '▲ Detail';
     });
+  }
+}
+
+/**
+ * Setup tombol "Kembali ke Tata Surya"
+ */
+function setupBackToSolarSystem(): void {
+  const wrapper = document.getElementById('btn-back-solar');
+  const btn = wrapper?.querySelector('.btn-back-solar-inner');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      exitFocusMode();
+    });
+  }
+}
+
+function showBackToSolarSystem(show: boolean): void {
+  const btn = document.getElementById('btn-back-solar');
+  if (btn) {
+    btn.classList.toggle('hidden', !show);
   }
 }
 
@@ -207,11 +251,19 @@ function resetUIState(): void {
   if (panel) { panel.classList.remove('has-planet', 'expanded'); }
   if (expandBtn) expandBtn.classList.add('hidden');
 
+  // Hide back-to-solar button
+  showBackToSolarSystem(false);
+
   // Reset pause icons
   const iconPause = document.getElementById('icon-pause');
   const iconPlay = document.getElementById('icon-play');
   if (iconPause && iconPlay) {
     iconPause.classList.remove('hidden');
     iconPlay.classList.add('hidden');
+  }
+
+  // Check if we need to indicate current mode
+  if (getCurrentMode() === 'solar-system') {
+    showBackToSolarSystem(false);
   }
 }

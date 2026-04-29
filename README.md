@@ -18,19 +18,18 @@ Aplikasi ini dirancang sebagai media pembelajaran yang memungkinkan siswa/mahasi
 2. Menerapkan konsep **Augmented Reality** menggunakan library **A-Frame** dan **AR.js**
 3. Menyediakan media pembelajaran interaktif tentang tata surya
 4. Mendemonstrasikan penggunaan marker-based AR tracking
+5. Menampilkan model 3D GLB planet yang realistis
 
 ---
 
 ## 📚 Kesesuaian dengan Materi Virtual dan Augmented Reality
 
-Project ini menerapkan konsep-konsep utama dari mata kuliah Virtual dan Augmented Reality:
-
 | Konsep | Implementasi |
 |--------|-------------|
 | **Augmented Reality** | Overlay objek 3D tata surya di atas dunia nyata melalui kamera |
 | **Marker-Based Tracking** | Menggunakan marker Hiro sebagai anchor point untuk objek AR |
-| **3D Rendering** | Rendering planet, matahari, dan orbit menggunakan WebGL via A-Frame |
-| **Real-Time Interaction** | User dapat memilih planet, pause orbit, zoom in/out secara real-time |
+| **3D Rendering** | Model GLB planet dan tata surya ditampilkan via A-Frame/Three.js |
+| **Real-Time Interaction** | User dapat memilih planet, zoom, pause, dan fokus planet secara real-time |
 | **Computer Vision** | AR.js mendeteksi dan melacak marker secara real-time dari feed kamera |
 | **Web-Based AR** | Implementasi AR tanpa instalasi native app (WebXR/WebAR) |
 
@@ -44,22 +43,27 @@ Project ini menerapkan konsep-konsep utama dari mata kuliah Virtual dan Augmente
 - Tombol "Mulai AR" dan "Panduan Marker"
 - Penjelasan cara penggunaan aplikasi
 
-### Mode AR
+### Mode AR — Tata Surya
 - Kamera aktif menggunakan AR.js
 - Deteksi marker Hiro secara real-time
-- Mini tata surya 3D muncul di atas marker:
-  - Matahari di tengah dengan efek cahaya
-  - 8 planet mengorbit: Merkurius, Venus, Bumi, Mars, Jupiter, Saturnus, Uranus, Neptunus
-  - Cincin Saturnus
-  - Orbit divisualisasikan sebagai lingkaran tipis
-  - Planet berotasi pada porosnya masing-masing
+- Model **solar_system.glb** muncul di atas marker Hiro
+- Model berputar pelan agar terlihat hidup
+- Jika solar_system.glb gagal dimuat, fallback ke procedural solar system (sphere + texture)
+
+### Mode AR — Fokus Planet
+- User memilih planet lewat chip UI (Merkurius s/d Neptunus)
+- Model GLB planet individu muncul lebih besar
+- Planet fokus berputar smooth
+- Informasi planet tampil di panel
+- Tombol "Kembali ke Tata Surya" untuk kembali ke mode utama
+- Jika model GLB planet gagal load, fallback ke sphere berwarna
 
 ### Interaksi
-- **Planet Selector** — Pilih planet melalui chip/tombol horizontal
+- **Planet Chips** — Pilih planet untuk masuk focus mode
 - **Panel Informasi** — Nama, urutan, deskripsi, dan fakta menarik planet
-- **Pause/Play** — Hentikan atau jalankan orbit planet
-- **Zoom In/Out** — Perbesar atau perkecil tata surya
-- **Reset** — Kembalikan ke tampilan default
+- **Pause/Play** — Hentikan atau jalankan rotasi
+- **Zoom In/Out** — Perbesar atau perkecil model
+- **Reset** — Kembalikan ke mode tata surya
 - **Kembali** — Kembali ke landing page
 
 ---
@@ -73,7 +77,6 @@ Project ini menerapkan konsep-konsep utama dari mata kuliah Virtual dan Augmente
 | [Tailwind CSS v4](https://tailwindcss.com/) | Framework CSS untuk styling |
 | [A-Frame](https://aframe.io/) | Framework WebXR untuk 3D/VR/AR |
 | [AR.js](https://ar-js-org.github.io/AR.js-Docs/) | Library AR marker-based tracking |
-| HTML/CSS | Struktur dan styling halaman |
 
 ---
 
@@ -82,30 +85,70 @@ Project ini menerapkan konsep-konsep utama dari mata kuliah Virtual dan Augmente
 ```
 ar-tata-surya/
 ├── public/
-│   ├── textures/          # Texture planet (JPG/PNG)
-│   │   └── README.md
-│   ├── markers/           # Marker kustom (opsional)
-│   │   └── README.md
-│   └── docs/              # Dokumentasi tambahan
-│       └── README.md
+│   ├── models/            # Model 3D GLB
+│   │   ├── solar_system.glb   # Model tata surya utama
+│   │   ├── mercury.glb
+│   │   ├── venus.glb
+│   │   ├── earth.glb
+│   │   ├── mars.glb
+│   │   ├── jupiter.glb
+│   │   ├── saturn.glb
+│   │   ├── uranus.glb
+│   │   └── neptune.glb
+│   ├── textures/          # Texture planet (JPG/PNG) — fallback
+│   └── docs/
 ├── src/
 │   ├── data/
-│   │   └── planets.ts     # Data informasi planet
+│   │   └── planets.ts     # Data planet + device scaling
 │   ├── styles/
-│   │   └── main.css       # Stylesheet utama (Tailwind CSS)
+│   │   └── main.css       # Stylesheet utama
 │   ├── ar/
-│   │   ├── solarSystem.ts # Logic pembuatan scene AR
+│   │   ├── solarSystem.ts # Logic AR scene + GLB loading
 │   │   └── aframeComponents.ts  # Custom A-Frame components
 │   ├── ui/
-│   │   └── controls.ts    # Logic UI controls (chips, panel, tombol)
+│   │   └── controls.ts    # UI controls (chips, panel, focus mode)
 │   ├── main.ts            # Entry point utama
-│   └── vite-env.d.ts      # Type declarations
-├── index.html             # Halaman utama
-├── package.json           # Dependencies dan scripts
-├── tsconfig.json          # Konfigurasi TypeScript
-├── vite.config.ts         # Konfigurasi Vite
-└── README.md              # Dokumentasi (file ini)
+│   └── vite-env.d.ts
+├── index.html
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+└── README.md
 ```
+
+---
+
+## 🗂️ Model GLB
+
+Model GLB diletakkan di folder `public/models/`. Berikut daftar file yang digunakan:
+
+| File | Fungsi |
+|------|--------|
+| `solar_system.glb` | Mode tata surya utama — muncul saat marker Hiro terdeteksi |
+| `mercury.glb` | Focus mode planet Merkurius |
+| `venus.glb` | Focus mode planet Venus |
+| `earth.glb` | Focus mode planet Bumi |
+| `mars.glb` | Focus mode planet Mars |
+| `jupiter.glb` | Focus mode planet Jupiter |
+| `saturn.glb` | Focus mode planet Saturnus |
+| `uranus.glb` | Focus mode planet Uranus |
+| `neptune.glb` | Focus mode planet Neptunus |
+
+### Fallback
+
+Jika model GLB gagal dimuat (file tidak ditemukan, koneksi lambat, dll):
+- **solar_system.glb** → fallback ke procedural solar system (sphere + orbit + texture)
+- **Planet GLB** → fallback ke `a-sphere` dengan warna planet
+
+Aplikasi **tidak akan error** jika model gagal load.
+
+### Mengganti Model GLB
+
+Jika model terlalu besar atau kecil:
+1. Edit `src/data/planets.ts`
+2. Ubah `focusScale` pada planet yang bersangkutan
+3. Ubah `solarSystemConfig.defaultScale` untuk model utama
+4. Device scaling otomatis menyesuaikan berdasarkan ukuran layar
 
 ---
 
@@ -113,13 +156,13 @@ ar-tata-surya/
 
 ### Prasyarat
 - **Node.js** versi 18 atau lebih baru
-- **npm** (biasanya sudah terinstall bersama Node.js)
+- **npm**
 - **Browser modern** (Chrome, Edge, Firefox, Safari)
 
 ### Langkah Instalasi
 
 ```bash
-# 1. Clone atau download repository
+# 1. Clone repository
 git clone <url-repo>
 cd ar-tata-surya
 
@@ -135,299 +178,141 @@ npm run dev
 ## 💻 Cara Menjalankan Lokal
 
 ```bash
-# Jalankan dev server (HTTP — hanya untuk desktop)
+# Development biasa (HTTP — desktop)
 npm run dev
 
-# Jalankan dev server dengan HTTPS (untuk testing AR di HP)
+# Development dengan HTTPS (untuk testing AR di HP)
 npm run dev:https
 ```
 
-Server akan berjalan di `http://localhost:5173` atau `https://localhost:5173`.
-
-> **PENTING:** Kamera AR hanya bisa diakses di **localhost** atau **HTTPS**. Jika Anda membuka `http://192.168.x.x` di HP, kamera **tidak akan aktif** dan layar akan hitam. Gunakan `npm run dev:https` untuk testing di HP.
-
-> **Catatan HTTPS:** Saat menggunakan `npm run dev:https`, browser HP akan menampilkan peringatan "koneksi tidak aman" karena self-signed certificate. Klik **Advanced** → **Proceed** untuk melanjutkan.
+> **PENTING:** Kamera AR hanya bisa diakses di **localhost** atau **HTTPS**.
 
 ---
 
-## 📱 Cara Testing di HP (Smartphone)
+## 📱 Cara Testing di HP
 
-> ⚠️ **PENTING:** Kamera browser di smartphone **hanya bisa diakses melalui HTTPS**. Membuka `http://192.168.x.x` akan menyebabkan layar hitam karena browser menolak akses kamera pada koneksi tidak aman.
+> ⚠️ Kamera browser di smartphone **hanya bisa diakses melalui HTTPS**.
 
-### Opsi 1: Dev Server HTTPS (Direkomendasikan)
+### Opsi 1: Dev Server HTTPS
 
 ```bash
-# Jalankan dev server dengan HTTPS
 npm run dev:https
 ```
 
-1. Pastikan laptop dan HP terhubung ke **WiFi yang sama**
-2. Perhatikan output di terminal, cari baris seperti:
-   ```
-   ➜ Network: https://192.168.x.x:5173/
-   ```
-3. Buka URL **HTTPS** tersebut di browser HP
-4. Browser akan menampilkan peringatan keamanan → klik **Advanced** → **Proceed**
-5. Izinkan akses kamera saat diminta
+1. Pastikan laptop dan HP terhubung ke WiFi yang sama
+2. Buka URL HTTPS yang muncul di terminal
+3. Browser akan menampilkan peringatan keamanan → klik **Advanced** → **Proceed**
+4. Izinkan akses kamera saat diminta
 
-### Opsi 2: Melalui ngrok
+### Opsi 2: ngrok
 
 ```bash
-# Jalankan dev server biasa
 npm run dev
-
-# Di terminal lain, buat tunnel HTTPS
 npx ngrok http 5173
 ```
 
-Lalu buka URL HTTPS dari ngrok di browser HP.
-
-### Opsi 3: Deploy ke Hosting (Lihat bagian Deploy)
+### Opsi 3: Deploy ke Vercel/Netlify
 
 ---
 
 ## 🌐 Cara Deploy
 
-### Deploy ke Vercel
-
+### Vercel
 ```bash
-# 1. Install Vercel CLI
 npm install -g vercel
-
-# 2. Build project
 npm run build
-
-# 3. Deploy
 vercel --prod
 ```
 
-Atau hubungkan repository GitHub ke [vercel.com](https://vercel.com) untuk auto-deploy.
-
-### Deploy ke Netlify
-
+### Netlify
 ```bash
-# 1. Build project
 npm run build
-
-# 2. Upload folder 'dist' ke Netlify
-# Atau hubungkan repo GitHub di netlify.com
+# Upload folder dist ke Netlify
 # Build command: npm run build
 # Publish directory: dist
-```
-
-### Deploy ke GitHub Pages
-
-```bash
-# 1. Build project
-npm run build
-
-# 2. Deploy folder dist ke GitHub Pages
-# Gunakan gh-pages package atau manual upload
-npx gh-pages -d dist
-```
-
-> **PENTING:** Setelah deploy, pastikan website diakses melalui **HTTPS**. Browser smartphone **memerlukan HTTPS** untuk mengizinkan akses kamera.
-
----
-
-## 🖼️ Cara Menambahkan Texture Planet
-
-1. Siapkan file texture planet dalam format **JPG** atau **PNG**
-2. Resolusi yang disarankan: **1024×512** atau **2048×1024** (equirectangular projection)
-3. Letakkan file di folder `public/textures/` dengan nama berikut:
-
-| File | Keterangan |
-|------|-----------|
-| `sun.jpg` | Texture permukaan Matahari |
-| `mercury.jpg` | Texture Merkurius |
-| `venus.jpg` | Texture Venus |
-| `earth.jpg` | Texture Bumi |
-| `mars.jpg` | Texture Mars |
-| `jupiter.jpg` | Texture Jupiter |
-| `saturn.jpg` | Texture Saturnus |
-| `uranus.jpg` | Texture Uranus |
-| `neptune.jpg` | Texture Neptunus |
-| `saturn-ring.png` | Texture cincin Saturnus (PNG transparan) |
-
-4. Restart dev server (`npm run dev`)
-5. Texture akan otomatis ter-load saat scene AR dijalankan
-
-> **Catatan:** Jika file texture belum tersedia, aplikasi tetap berjalan menggunakan **warna fallback** untuk setiap planet. Tidak akan terjadi error.
-
-### Sumber Texture Gratis
-
-- [Solar System Scope](https://www.solarsystemscope.com/textures/) — Texture planet gratis berkualitas tinggi
-- [NASA 3D Resources](https://nasa3d.arc.nasa.gov/images) — Texture resmi dari NASA
-
----
-
-## 🔄 Alur Sistem AR
-
-```
-┌─────────────────┐
-│  User membuka   │
-│    website       │
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│  Landing Page   │
-│  ditampilkan    │
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ User klik       │
-│ "Mulai AR"      │
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ Browser meminta │
-│ izin kamera     │
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ Kamera aktif,   │
-│ AR.js berjalan  │
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ User arahkan    │
-│ kamera ke       │
-│ marker Hiro     │
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ Marker          │
-│ terdeteksi      │
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ Mini tata surya │
-│ muncul di atas  │
-│ marker          │
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ User memilih    │
-│ planet via UI   │
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ Planet di-       │
-│ highlight,      │
-│ info berubah    │
-└─────────────────┘
 ```
 
 ---
 
 ## 📋 Panduan Marker Hiro
 
-Marker **Hiro** adalah marker default yang digunakan oleh AR.js. Berikut cara mendapatkan marker:
+1. Download: [https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/images/hiro.png](https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/images/hiro.png)
+2. Print di kertas putih (minimal 8×8 cm) atau tampilkan di layar lain
+3. Arahkan kamera HP ke marker, jaga jarak 15–40 cm
 
-### Cara 1: Download dan Print
-1. Download marker Hiro dari: [https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/images/hiro.png](https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/images/hiro.png)
-2. Print di kertas putih (ukuran minimal 8×8 cm)
-3. Pastikan marker tercetak jelas dan tidak terpotong
+---
 
-### Cara 2: Tampilkan di Layar
-1. Buka link marker di atas di laptop/tablet/HP lain
-2. Tampilkan gambar marker di layar
-3. Arahkan kamera HP ke layar tersebut
+## 🔄 Alur Sistem AR
 
-### Tips
-- Hindari pantulan cahaya pada marker
-- Jaga jarak kamera 15–40 cm dari marker
-- Pastikan pencahayaan cukup terang
-- Jangan menutupi sebagian marker
+```
+User membuka website
+        ↓
+Landing page ditampilkan
+        ↓
+User klik "Mulai AR"
+        ↓
+Browser meminta izin kamera
+        ↓
+Kamera aktif, AR.js berjalan
+        ↓
+User arahkan kamera ke marker Hiro
+        ↓
+solar_system.glb muncul di atas marker (berputar)
+        ↓
+User memilih planet via chip UI
+        ↓
+Focus mode: planet GLB individu muncul besar
+Info planet tampil, tombol "Kembali ke Tata Surya"
+        ↓
+User klik "Kembali" → solar_system.glb muncul lagi
+```
 
 ---
 
 ## ⚠️ Catatan Penting
 
-1. **HTTPS untuk Kamera:** Browser smartphone memerlukan koneksi **HTTPS** untuk mengizinkan akses kamera. Gunakan `localhost` (untuk development), ngrok, atau deploy ke hosting dengan HTTPS.
-
-2. **Kompatibilitas Browser:**
-   - ✅ Chrome Android (direkomendasikan)
-   - ✅ Safari iOS (iOS 11+)
-   - ✅ Chrome Desktop
-   - ✅ Edge Desktop
-   - ⚠️ Firefox (dukungan terbatas untuk AR.js)
-
-3. **Performa:** Jika performa lambat, coba:
-   - Kurangi ukuran texture (gunakan 512×256)
-   - Tutup aplikasi lain di HP
-   - Gunakan browser Chrome terbaru
-
-4. **Texture Opsional:** Aplikasi berjalan normal tanpa texture. Texture hanya menambah kualitas visual.
+1. **HTTPS:** Browser smartphone memerlukan HTTPS untuk akses kamera
+2. **Kompatibilitas:** Chrome Android, Safari iOS, Chrome Desktop, Edge
+3. **Performa:** Jika lambat, kurangi ukuran model GLB atau gunakan model yang lebih ringan
+4. **Fallback:** Aplikasi tetap jalan tanpa model GLB (fallback ke sphere)
 
 ---
 
 ## 🔧 Troubleshooting
 
+### Model GLB tidak muncul
+- Pastikan file ada di `public/models/`
+- Nama file harus tepat: `solar_system.glb`, `earth.glb`, dll
+- Cek console browser untuk error loading
+- Aplikasi tetap jalan dengan fallback sphere
+
 ### Layar hitam saat klik "Mulai AR"
-
-**Penyebab:** Halaman dibuka melalui HTTP (bukan HTTPS) di smartphone.
-
-**Solusi:**
-- Gunakan `npm run dev:https` untuk testing di HP
+- Gunakan `npm run dev:https` untuk HP
 - Atau deploy ke Vercel/Netlify (otomatis HTTPS)
-- Atau gunakan ngrok: `npx ngrok http 5173`
-- Di localhost/desktop biasanya tidak masalah
 
-### Izin kamera ditolak
-
-**Solusi:**
-1. Buka pengaturan browser → Site Settings → Camera
-2. Cari URL website dan ubah izin kamera menjadi "Allow"
-3. Refresh halaman dan klik "Mulai AR" lagi
-
-### Marker Hiro tidak terdeteksi
-
-**Solusi:**
-- Pastikan marker tercetak/tampil jelas dan tidak terpotong
-- Jaga jarak kamera 15–40 cm dari marker
-- Pastikan pencahayaan cukup terang
-- Hindari pantulan cahaya pada marker
-- Pastikan ukuran marker minimal 8×8 cm
-- Coba pegang HP lebih stabil
-
-### A-Frame / AR.js CDN gagal dimuat
-
-**Penyebab:** Koneksi internet lambat atau CDN tidak tersedia.
-
-**Solusi:**
-- Pastikan koneksi internet stabil
-- Coba refresh halaman
-- Periksa apakah domain `aframe.io` dan `raw.githack.com` tidak diblokir
-
-### Texture planet tidak muncul
-
-**Solusi:**
-- Pastikan file texture ada di `public/textures/`
-- Nama file harus sesuai: `sun.jpg`, `mercury.jpg`, dst.
-- Format: JPG untuk planet, PNG untuk saturn-ring
-- Restart dev server setelah menambah texture
-- Tanpa texture, aplikasi tetap jalan dengan warna fallback
+### Marker tidak terdeteksi
+- Pastikan marker jelas dan tidak terpotong
+- Jarak kamera 15–40 cm
+- Pencahayaan cukup terang
 
 ---
 
 ## 🧪 Testing Checklist
 
-- [ ] `npm install` berhasil tanpa error
-- [ ] `npm run dev` berhasil menjalankan server
-- [ ] Landing page tampil dengan desain rapi
-- [ ] Tombol "Mulai AR" membuka mode AR
-- [ ] Kamera aktif setelah izin diberikan
-- [ ] Marker Hiro memunculkan tata surya 3D
-- [ ] Planet mengorbit mengelilingi matahari
-- [ ] Planet berotasi pada porosnya
-- [ ] User bisa memilih planet via chip
-- [ ] Informasi planet berubah saat planet dipilih
-- [ ] Tombol pause/play berfungsi
-- [ ] Tombol zoom in/out berfungsi
-- [ ] Tombol reset berfungsi
-- [ ] Tombol kembali berfungsi
-- [ ] Project bisa di-build (`npm run build`)
+- [ ] `npm run build` sukses
+- [ ] Landing page tampil rapi di mobile
+- [ ] Tombol "Mulai AR" membuka kamera
+- [ ] Marker Hiro memunculkan solar_system.glb
+- [ ] solar_system.glb berputar pelan
+- [ ] Klik chip planet masuk focus mode
+- [ ] Focus mode menampilkan GLB planet
+- [ ] Planet focus berputar smooth
+- [ ] Info planet tampil benar
+- [ ] Tombol "Kembali ke Tata Surya" berfungsi
+- [ ] Fallback sphere jika GLB gagal
+- [ ] AR page rapi di mobile
+- [ ] Back ke landing membersihkan scene/video/canvas
+- [ ] Tombol "Panduan Marker" tetap bisa diklik setelah keluar AR
 
 ---
 
