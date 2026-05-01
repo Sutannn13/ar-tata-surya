@@ -74,16 +74,8 @@ function debugLog(...args: unknown[]): void {
 
 function getViewportSize(): { width: number; height: number } {
   const vv = window.visualViewport;
-  const width = Math.ceil(Math.max(
-    document.documentElement.clientWidth || 0,
-    window.innerWidth || 0,
-    vv?.width || 0
-  ));
-  const height = Math.ceil(Math.max(
-    document.documentElement.clientHeight || 0,
-    window.innerHeight || 0,
-    vv?.height || 0
-  ));
+  const width = Math.ceil(window.innerWidth || vv?.width || document.documentElement.clientWidth || 0);
+  const height = Math.ceil(window.innerHeight || vv?.height || document.documentElement.clientHeight || 0);
 
   return { width, height };
 }
@@ -354,31 +346,50 @@ function updateViewportSize(): void {
   const { width, height } = getViewportSize();
   document.documentElement.style.setProperty('--app-width', `${width}px`);
   document.documentElement.style.setProperty('--app-height', `${height}px`);
-  fitARSurfaceElements(width, height);
+  fitARSurfaceElements();
   refreshSceneDeviceLayout();
 }
 
-function fitARSurfaceElements(width = getViewportSize().width, height = getViewportSize().height): void {
-  const sizeStyles = {
-    position: 'absolute',
-    top: '0',
-    left: '0',
-    right: '0',
-    bottom: '0',
-    width: `${width}px`,
-    height: `${height}px`,
-  };
+function fitARSurfaceElements(): void {
+  const applyFullscreen = (el: HTMLElement) => {
+    const styles: Record<string, string> = {
+      position: 'absolute',
+      inset: '0',
+      width: '100%',
+      height: '100%',
+      'min-width': '100%',
+      'min-height': '100%',
+      'max-width': 'none',
+      'max-height': 'none',
+    };
 
-  const applySize = (el: HTMLElement) => {
-    Object.entries(sizeStyles).forEach(([property, value]) => {
+    Object.entries(styles).forEach(([property, value]) => {
       el.style.setProperty(property, value, 'important');
     });
   };
 
   const container = document.getElementById('ar-scene-container');
-  if (container) applySize(container);
-  document.querySelectorAll<HTMLElement>('#ar-scene-container a-scene, #ar-scene-container canvas.a-canvas, #ar-scene-container video')
-    .forEach(applySize);
+  if (container) applyFullscreen(container);
+
+  document.querySelectorAll<HTMLElement>('#ar-scene-container a-scene').forEach((el) => {
+    applyFullscreen(el);
+    el.style.setProperty('z-index', '2', 'important');
+    el.style.setProperty('background', 'transparent', 'important');
+  });
+
+  document.querySelectorAll<HTMLElement>('#ar-scene-container canvas.a-canvas, #ar-scene-container .a-canvas').forEach((el) => {
+    applyFullscreen(el);
+    el.style.setProperty('z-index', '2', 'important');
+    el.style.setProperty('background', 'transparent', 'important');
+  });
+
+  document.querySelectorAll<HTMLElement>('#ar-scene-container video').forEach((el) => {
+    applyFullscreen(el);
+    el.style.setProperty('z-index', '1', 'important');
+    el.style.setProperty('object-fit', 'cover', 'important');
+    el.style.setProperty('object-position', 'center center', 'important');
+    el.style.setProperty('background', 'transparent', 'important');
+  });
 }
 
 function refreshSceneDeviceLayout(): void {
@@ -426,11 +437,7 @@ function buildScene(onProgress?: ProgressCallback): void {
 
   sceneEl = document.createElement('a-scene');
   sceneEl.setAttribute('embedded', '');
-  const viewport = getViewportSize();
-  sceneEl.setAttribute(
-    'arjs',
-    `sourceType: webcam; trackingMethod: best; debugUIEnabled: false; sourceWidth: ${viewport.width}; sourceHeight: ${viewport.height}; displayWidth: ${viewport.width}; displayHeight: ${viewport.height};`
-  );
+  sceneEl.setAttribute('arjs', 'sourceType: webcam; trackingMethod: best; debugUIEnabled: false;');
   sceneEl.setAttribute('renderer', 'logarithmicDepthBuffer: true; precision: mediump; alpha: true; antialias: true;');
   sceneEl.setAttribute('vr-mode-ui', 'enabled: false');
 
@@ -765,16 +772,17 @@ function fixCameraVideoElement(): void {
   const apply = () => {
     const container = document.getElementById('ar-scene-container');
     if (!container) return;
-    const { width, height } = getViewportSize();
     adoptARVideo();
-    fitARSurfaceElements(width, height);
+    fitARSurfaceElements();
     container.querySelectorAll('video').forEach((video) => {
       video.style.setProperty('position', 'absolute', 'important');
       video.style.setProperty('inset', '0', 'important');
-      video.style.setProperty('width', `${width}px`, 'important');
-      video.style.setProperty('height', `${height}px`, 'important');
-      video.style.setProperty('min-width', '100vw', 'important');
-      video.style.setProperty('min-height', '100dvh', 'important');
+      video.style.setProperty('width', '100%', 'important');
+      video.style.setProperty('height', '100%', 'important');
+      video.style.setProperty('min-width', '100%', 'important');
+      video.style.setProperty('min-height', '100%', 'important');
+      video.style.setProperty('max-width', 'none', 'important');
+      video.style.setProperty('max-height', 'none', 'important');
       video.style.setProperty('object-fit', 'cover', 'important');
       video.style.setProperty('object-position', 'center center', 'important');
       video.style.setProperty('z-index', '1', 'important');
@@ -909,6 +917,8 @@ export function destroyScene(): void {
   focusedPlanetId = null; onPlanetTap = null; onModeChange = null;
   usingSolarSystemGLB = false; loadedModels.clear();
   markerFoundCount = 0; markerLostCount = 0; markerVisible = false;
+  isDragging = false;
+  dragStartX = 0; dragStartY = 0; dragStartOffsetX = 0; dragStartOffsetZ = 0;
   offsetX = 0; offsetY = 0; offsetZ = 0;
 
   debugLog('destroyScene: done');

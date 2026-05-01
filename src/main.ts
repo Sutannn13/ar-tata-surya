@@ -36,6 +36,8 @@ const errorDetailsText = document.getElementById('error-details-text')!;
 const btnRetry = document.getElementById('btn-retry')!;
 const btnErrorBack = document.getElementById('btn-error-back')!;
 
+let isOpeningAR = false;
+
 // ===== Helpers =====
 
 function setStepStatus(stepId: string, status: 'pending' | 'active' | 'done' | 'error'): void {
@@ -80,6 +82,17 @@ function hasCameraSupport(): boolean {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getHomeUrl(): string {
+  return `${window.location.pathname}${window.location.search}`;
+}
+
+function clearRuntimePageLocks(): void {
+  document.documentElement.classList.remove('ar-active');
+  document.body.classList.remove('ar-active');
+  document.documentElement.style.removeProperty('--app-width');
+  document.documentElement.style.removeProperty('--app-height');
 }
 
 function getCameraErrorMessage(err: any): { title: string; message: string; details?: string } {
@@ -131,11 +144,19 @@ function getCameraErrorMessage(err: any): { title: string; message: string; deta
 // ===== Open AR Page =====
 
 async function openARPage(): Promise<void> {
+  if (isOpeningAR) return;
+  isOpeningAR = true;
+
+  destroyScene();
   landingPage.classList.add('hidden');
   arPage.classList.remove('hidden');
   loadingOverlay.classList.remove('hidden');
   resetLoadingState();
-  history.pushState({ page: 'ar' }, '', '#ar');
+  if (window.location.hash === '#ar') {
+    history.replaceState({ page: 'ar' }, '', '#ar');
+  } else {
+    history.pushState({ page: 'ar' }, '', '#ar');
+  }
 
   let resolveSceneReady: (() => void) | null = null;
   const sceneReadyPromise = new Promise<void>((resolve) => { resolveSceneReady = resolve; });
@@ -200,8 +221,15 @@ async function openARPage(): Promise<void> {
     const videoReady = await waitForCameraVideoReady({ timeoutMs: 10000 });
 
     if (!videoReady.ready) {
-      // Don't hard-fail — show instruction instead
-      console.warn('[AR] Video not ready within timeout, showing anyway');
+      // Keep the loading overlay visible instead of exposing a black AR canvas.
+      console.warn('[AR] Video not ready within timeout');
+      setStepStatus('camera', 'error');
+      showError(
+        'Kamera Belum Menampilkan Gambar',
+        'Browser belum mengirim frame kamera ke AR.js. Tutup tab/aplikasi lain yang memakai kamera, lalu coba lagi.',
+        `Video: ${videoReady.videoWidth}x${videoReady.videoHeight}\nTrack: ${videoReady.trackState}`
+      );
+      return;
     }
 
     // Update debug panel
@@ -232,15 +260,29 @@ async function openARPage(): Promise<void> {
         `Error: ${err?.message || String(err)}`
       );
     }
+  } finally {
+    isOpeningAR = false;
   }
 }
 
 // ===== Navigation =====
 
-function backToLanding(): void {
+function backToLanding(options: { replaceHistory?: boolean } = {}): void {
+  isOpeningAR = false;
   destroyScene();
+  loadingOverlay.classList.add('hidden');
+  loadingContent.classList.remove('hidden');
+  loadingError.classList.add('hidden');
+  markerModal.classList.add('hidden');
   arPage.classList.add('hidden');
   landingPage.classList.remove('hidden');
+  clearRuntimePageLocks();
+
+  if (options.replaceHistory !== false && window.location.hash === '#ar') {
+    history.replaceState({ page: 'home' }, '', getHomeUrl());
+  }
+
+  window.scrollTo(0, 0);
 }
 
 function openMarkerGuide(): void {
@@ -256,21 +298,25 @@ function closeMarkerGuide(): void {
 btnStartAR.addEventListener('click', openARPage);
 btnMarkerGuide.addEventListener('click', openMarkerGuide);
 btnCloseModal.addEventListener('click', closeMarkerGuide);
-btnBack.addEventListener('click', backToLanding);
+btnBack.addEventListener('click', () => backToLanding());
 
 btnRetry.addEventListener('click', () => {
   destroyScene();
   openARPage();
 });
 
-btnErrorBack.addEventListener('click', backToLanding);
+btnErrorBack.addEventListener('click', () => backToLanding());
 
 markerModal.addEventListener('click', (e) => {
   if (e.target === markerModal) closeMarkerGuide();
 });
 
 window.addEventListener('popstate', () => {
-  if (!arPage.classList.contains('hidden')) backToLanding();
+  if (!arPage.classList.contains('hidden')) backToLanding({ replaceHistory: false });
 });
+
+if (window.location.hash === '#ar') {
+  history.replaceState({ page: 'home' }, '', getHomeUrl());
+}
 
 console.log('🪐 AR Tata Surya - Loaded');

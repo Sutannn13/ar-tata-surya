@@ -25,15 +25,22 @@ import {
 
 let selectedPlanetId: string | null = null;
 let panelExpanded = false;
+let controlsBound = false;
 
 /**
  * Inisialisasi semua UI controls
  */
 export function initControls(): void {
   buildPlanetChips();
-  bindControlButtons();
-  setupPanelToggle();
-  setupBackToSolarSystem();
+
+  if (!controlsBound) {
+    bindControlButtons();
+    setupPanelToggle();
+    setupBackToSolarSystem();
+    controlsBound = true;
+  }
+
+  resetUIState();
 
   // Register callback untuk tap planet 3D
   onPlanetTapEvent((planetId: string) => {

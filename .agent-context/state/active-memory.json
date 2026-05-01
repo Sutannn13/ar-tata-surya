@@ -8,11 +8,12 @@
   },
   "project": {
     "name": "ar-tata-surya",
-    "currentFocus": "WebAR viewport fit, GLB scale normalization, and planet texture recovery",
+    "currentFocus": "WebAR camera-layer stability, landing cleanup, GLB scale normalization, and planet texture recovery",
     "durableFacts": [
       "AR experience depends on A-Frame and AR.js webcam video layering and readiness checks.",
       "GLB solar system and focus planet sizing is normalized with an A-Frame auto-model-scale component using THREE.Box3 target sizes.",
-      "Some planet GLBs use legacy material data, so focus mode includes runtime texture recovery from public/textures when GLB maps are missing."
+      "Some planet GLBs use legacy material data, so focus mode includes runtime texture recovery from public/textures when GLB maps are missing.",
+      "Mobile camera visibility is protected by leaving AR.js webcam source dimensions unmanaged and fitting video/canvas layers relative to the AR container."
     ]
   },
   "progress": {
@@ -23,21 +24,27 @@
       "Compacted mobile focus overlays and preserved AR camera layering.",
       "Added viewport-width fitting for AR camera/canvas surfaces to avoid right-side cropping on mobile Chrome.",
       "Added material recovery for focus planet GLBs and rotated solar_system.glb toward a horizontal Sketchfab-like preview orientation.",
+      "Removed forced AR.js source/display dimensions and changed camera/canvas fitting to container-relative 100% layers.",
+      "Added camera-not-ready error handling so the app does not hide loading into a black AR canvas.",
+      "Added AR-to-landing cleanup for loading state, hash state, scroll position, and idempotent control bindings.",
       "Build passed with npm.cmd run build."
     ],
     "pendingIssues": [
       "Verify normalized GLB sizing on Vercel HTTPS with a physical Hiro marker.",
-      "Check Mars, Jupiter, Saturn, and solar_system orientation on Infinix Note 40 portrait."
+      "Check Mars, Jupiter, Saturn, and solar_system orientation on Infinix Note 40 portrait.",
+      "Verify camera feed on deployed HTTPS after Vercel rebuild because the screenshot came from the hosted URL."
     ],
     "nextBestActions": [
       "Test with ?debug=true to review auto-model-scale bounding box telemetry.",
       "Tune DEVICE_TARGET_SIZE_MAP or per-planet focusTargetSizeMultiplier if a model still feels too large or too small.",
-      "Use ?debug=true to confirm viewport, bounding box, and recovered material logs on deployed HTTPS."
+      "Use ?debug=true to confirm viewport, bounding box, recovered material logs, and AR video readiness on deployed HTTPS."
     ],
     "validationState": [
       "npm run build: blocked by PowerShell npm.ps1 execution policy",
-      "npm.cmd run build: pass",
+      "npm.cmd run build: pass after camera-layer and landing-cleanup patch",
       "npm run validate: not available",
+      "npm.cmd run typecheck --if-present: pass/no configured script output",
+      "npm.cmd run lint --if-present: pass/no configured script output",
       "npm run lint/typecheck scripts: not present in package.json"
     ]
   },
@@ -56,5 +63,5 @@
     "redactSensitiveTextBeforeWriting": true
   },
   "generatedAt": "2026-04-28T12:19:14.834Z",
-  "lastUpdatedAt": "2026-04-29T18:26:45+07:00"
+  "lastUpdatedAt": "2026-04-29T19:03:36.9393957+07:00"
 }
