@@ -8,18 +8,16 @@
   },
   "project": {
     "name": "ar-tata-surya",
-    "currentFocus": "WebAR camera-layer stability, landing cleanup, GLB scale normalization, and planet texture recovery",
+    "currentFocus": "Android/Vercel WebAR camera cover fitting, tilted GLB presentation, GLB scale normalization, and planet texture recovery",
     "durableFacts": [
       "AR experience depends on A-Frame and AR.js webcam video layering and readiness checks.",
       "GLB solar system and focus planet sizing is normalized with an A-Frame auto-model-scale component using THREE.Box3 target sizes.",
       "Some planet GLBs use legacy material data, so focus mode includes runtime texture recovery from public/textures when GLB maps are missing.",
-      "Mobile camera visibility is protected by leaving AR.js webcam source dimensions unmanaged and fitting video/canvas layers relative to the AR container."
+      "Mobile camera visibility is protected by leaving AR.js webcam source dimensions unmanaged while AR.js display dimensions and viewport-aware cover fitting expand the video/canvas layers across the Android visual viewport."
     ]
   },
   "progress": {
     "lastAchievements": [
-      "Added auto-model-scale to normalize GLB bounding boxes after model-loaded.",
-      "Added device target sizes for small-phone, phone, large-phone, tablet, and desktop.",
       "Applied normalized sizing to solar_system.glb and focus planet GLBs with per-planet multipliers.",
       "Compacted mobile focus overlays and preserved AR camera layering.",
       "Added viewport-width fitting for AR camera/canvas surfaces to avoid right-side cropping on mobile Chrome.",
@@ -27,22 +25,25 @@
       "Removed forced AR.js source/display dimensions and changed camera/canvas fitting to container-relative 100% layers.",
       "Added camera-not-ready error handling so the app does not hide loading into a black AR canvas.",
       "Added AR-to-landing cleanup for loading state, hash state, scroll position, and idempotent control bindings.",
+      "Passed Android visual viewport dimensions into AR.js displayWidth/displayHeight during scene creation.",
+      "Added Android viewport-aware video cover fitting so AR.js camera streams expand beyond mismatched source aspect ratios.",
+      "Tilted solar-system and focus GLB roots so the model presentation is less edge-on/vertical on marker scans.",
       "Build passed with npm.cmd run build."
     ],
     "pendingIssues": [
       "Verify normalized GLB sizing on Vercel HTTPS with a physical Hiro marker.",
       "Check Mars, Jupiter, Saturn, and solar_system orientation on Infinix Note 40 portrait.",
-      "Verify camera feed on deployed HTTPS after Vercel rebuild because the screenshot came from the hosted URL."
+      "Verify camera feed on deployed HTTPS after committing/pushing because the screenshot came from the hosted URL."
     ],
     "nextBestActions": [
-      "Test with ?debug=true to review auto-model-scale bounding box telemetry.",
-      "Tune DEVICE_TARGET_SIZE_MAP or per-planet focusTargetSizeMultiplier if a model still feels too large or too small.",
-      "Use ?debug=true to confirm viewport, bounding box, recovered material logs, and AR video readiness on deployed HTTPS."
+      "Deploy the local patch to Vercel through the connected GitHub main branch or a manual Vercel deploy.",
+      "Use ?debug=true to confirm viewport, AR Vid, Vid CSS, bounding box, recovered material logs, and AR video readiness on deployed HTTPS.",
+      "Tune SOLAR_SYSTEM_VIEW_ROTATION, FOCUS_PLANET_VIEW_ROTATION, DEVICE_TARGET_SIZE_MAP, or per-planet focusTargetSizeMultiplier if a model still feels too vertical, large, or small."
     ],
     "validationState": [
-      "npm run build: blocked by PowerShell npm.ps1 execution policy",
-      "npm.cmd run build: pass after camera-layer and landing-cleanup patch",
+      "npm.cmd run build: pass after Android AR.js display sizing, camera cover-fit, and GLB tilt patch",
       "npm run validate: not available",
+      "npm.cmd run validate --if-present: pass/no configured script output",
       "npm.cmd run typecheck --if-present: pass/no configured script output",
       "npm.cmd run lint --if-present: pass/no configured script output",
       "npm run lint/typecheck scripts: not present in package.json"
@@ -63,5 +64,5 @@
     "redactSensitiveTextBeforeWriting": true
   },
   "generatedAt": "2026-04-28T12:19:14.834Z",
-  "lastUpdatedAt": "2026-04-29T19:03:36.9393957+07:00"
+  "lastUpdatedAt": "2026-05-01T15:04:10.0000000+07:00"
 }

@@ -274,7 +274,7 @@ type DeviceScaleConfig = {
   focusPositionY: number;
 };
 
-const PROCEDURAL_SOLAR_SYSTEM_DIAMETER = 4.8;
+const PROCEDURAL_SOLAR_SYSTEM_DIAMETER = 5.2;
 
 /**
  * Deteksi device profile berdasarkan viewport
@@ -300,11 +300,11 @@ export function getDeviceProfile(): DeviceProfile {
 }
 
 export const DEVICE_TARGET_SIZE_MAP: Record<DeviceProfile, DeviceScaleConfig> = {
-  'small-phone': { solarSystemTargetSize: 0.75, focusPlanetTargetSize: 0.34, solarPositionY: 0.15, focusPositionY: 0.24 },
-  'phone':       { solarSystemTargetSize: 0.85, focusPlanetTargetSize: 0.38, solarPositionY: 0.15, focusPositionY: 0.24 },
-  'large-phone': { solarSystemTargetSize: 0.95, focusPlanetTargetSize: 0.42, solarPositionY: 0.15, focusPositionY: 0.24 },
-  'tablet':      { solarSystemTargetSize: 1.15, focusPlanetTargetSize: 0.55, solarPositionY: 0.18, focusPositionY: 0.27 },
-  'desktop':     { solarSystemTargetSize: 1.25, focusPlanetTargetSize: 0.62, solarPositionY: 0.2, focusPositionY: 0.28 },
+  'small-phone': { solarSystemTargetSize: 0.65, focusPlanetTargetSize: 0.34, solarPositionY: 0.12, focusPositionY: 0.24 },
+  'phone':       { solarSystemTargetSize: 0.72, focusPlanetTargetSize: 0.38, solarPositionY: 0.12, focusPositionY: 0.24 },
+  'large-phone': { solarSystemTargetSize: 0.80, focusPlanetTargetSize: 0.42, solarPositionY: 0.13, focusPositionY: 0.24 },
+  'tablet':      { solarSystemTargetSize: 1.00, focusPlanetTargetSize: 0.55, solarPositionY: 0.15, focusPositionY: 0.27 },
+  'desktop':     { solarSystemTargetSize: 1.10, focusPlanetTargetSize: 0.62, solarPositionY: 0.18, focusPositionY: 0.28 },
 };
 
 /**

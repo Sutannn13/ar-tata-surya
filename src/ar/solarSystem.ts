@@ -52,6 +52,12 @@ let offsetZ = 0;
 
 const loadedModels: Set<string> = new Set();
 const textureCache: Map<string, any> = new Map();
+const SOLAR_SYSTEM_VIEW_ROTATION = '-30 0 0';
+const FOCUS_PLANET_VIEW_ROTATION = '-10 18 -4';
+const VIDEO_REFIT_DELAYS = [100, 350, 800, 1500, 3000, 5000];
+
+let isApplyingSurfaceFit = false;
+let pendingSurfaceFit = false;
 
 type AutoModelScaleOptions = {
   targetSize: number;
@@ -74,8 +80,8 @@ function debugLog(...args: unknown[]): void {
 
 function getViewportSize(): { width: number; height: number } {
   const vv = window.visualViewport;
-  const width = Math.ceil(window.innerWidth || vv?.width || document.documentElement.clientWidth || 0);
-  const height = Math.ceil(window.innerHeight || vv?.height || document.documentElement.clientHeight || 0);
+  const width = Math.ceil(vv?.width || window.innerWidth || document.documentElement.clientWidth || 0);
+  const height = Math.ceil(vv?.height || window.innerHeight || document.documentElement.clientHeight || 0);
 
   return { width, height };
 }
@@ -87,6 +93,19 @@ function getThree(): any {
 function resolvePublicAssetPath(assetPath: string): string {
   if (assetPath.startsWith('http') || assetPath.startsWith('/')) return assetPath;
   return `${getTextureBaseUrl()}${assetPath}`;
+}
+
+function buildARJSAttribute(): string {
+  const viewport = getViewportSize();
+  return [
+    'sourceType: webcam',
+    'trackingMethod: best',
+    'debugUIEnabled: false',
+    `displayWidth: ${viewport.width}`,
+    `displayHeight: ${viewport.height}`,
+    'sourceWidth: ' + viewport.width,
+    'sourceHeight: ' + viewport.height,
+  ].join('; ');
 }
 
 function getCachedTexture(assetPath: string): any | null {
@@ -227,16 +246,118 @@ function recoverPlanetModelMaterials(root: any, planet: Planet): void {
 function adoptARVideo(): void {
   const container = document.getElementById('ar-scene-container');
   if (!container) return;
-  document.querySelectorAll('body > video').forEach((video) => {
+  document.querySelectorAll('body > video, body > #arjs-video').forEach((video) => {
     debugLog('Adopting body>video into #ar-scene-container');
     container.insertBefore(video, container.firstChild);
   });
+}
+
+function getARViewportSize(): { width: number; height: number } {
+  // Gunakan window dimensions untuk responsivitas penuh
+  const width = Math.ceil(window.innerWidth || window.visualViewport?.width || 1);
+  const height = Math.ceil(window.innerHeight || window.visualViewport?.height || 1);
+
+  return { width, height };
+}
+
+function getVideoIntrinsicSize(video: HTMLVideoElement): { width: number; height: number } {
+  const track = (video.srcObject as MediaStream | null)?.getVideoTracks?.()[0];
+  const settings = track?.getSettings?.();
+  const width = video.videoWidth || settings?.width || 1280;
+  const height = video.videoHeight || settings?.height || 720;
+
+  return { width, height };
+}
+
+function applySurfaceBox(el: HTMLElement, width: number, height: number): void {
+  const styles: Record<string, string> = {
+    position: 'absolute',
+    top: '0',
+    left: '0',
+    right: 'auto',
+    bottom: 'auto',
+    width: `${width}px`,
+    height: `${height}px`,
+    'min-width': `${width}px`,
+    'min-height': `${height}px`,
+    'max-width': 'none',
+    'max-height': 'none',
+    margin: '0',
+  };
+
+  Object.entries(styles).forEach(([property, value]) => {
+    el.style.setProperty(property, value, 'important');
+  });
+}
+
+function applyVideoCoverBox(video: HTMLVideoElement, viewportWidth: number, viewportHeight: number): void {
+  const intrinsic = getVideoIntrinsicSize(video);
+  const videoAspect = intrinsic.width / intrinsic.height;
+  const viewportAspect = viewportWidth / viewportHeight;
+  let coverWidth = viewportWidth;
+  let coverHeight = viewportHeight;
+
+  if (Number.isFinite(videoAspect) && videoAspect > 0 && Number.isFinite(viewportAspect) && viewportAspect > 0) {
+    if (videoAspect > viewportAspect) {
+      coverHeight = viewportHeight;
+      coverWidth = Math.ceil(coverHeight * videoAspect);
+    } else {
+      coverWidth = viewportWidth;
+      coverHeight = Math.ceil(coverWidth / videoAspect);
+    }
+  }
+
+  const left = Math.floor((viewportWidth - coverWidth) / 2);
+  const top = Math.floor((viewportHeight - coverHeight) / 2);
+
+  const styles: Record<string, string> = {
+    position: 'absolute',
+    top: `${top}px`,
+    left: `${left}px`,
+    right: 'auto',
+    bottom: 'auto',
+    width: `${coverWidth}px`,
+    height: `${coverHeight}px`,
+    'min-width': `${coverWidth}px`,
+    'min-height': `${coverHeight}px`,
+    'max-width': 'none',
+    'max-height': 'none',
+    margin: '0',
+    'object-fit': 'cover',
+    'object-position': 'center center',
+    'z-index': '1',
+    display: 'block',
+    opacity: '1',
+    visibility: 'visible',
+    background: 'transparent',
+    transform: 'none',
+    '-webkit-transform': 'none',
+    'pointer-events': 'none',
+  };
+
+  Object.entries(styles).forEach(([property, value]) => {
+    video.style.setProperty(property, value, 'important');
+  });
+  video.removeAttribute('width');
+  video.removeAttribute('height');
+  video.setAttribute('playsinline', '');
+  video.setAttribute('webkit-playsinline', '');
+  video.playsInline = true;
 }
 
 function getARVideoElement(): HTMLVideoElement | null {
   const videos = Array.from(document.querySelectorAll('video'));
   for (const v of videos) { if (v.srcObject) return v; }
   return videos[0] || null;
+}
+
+function scheduleSurfaceFit(): void {
+  if (pendingSurfaceFit) return;
+  pendingSurfaceFit = true;
+  requestAnimationFrame(() => {
+    pendingSurfaceFit = false;
+    fitARSurfaceElements();
+  });
 }
 
 // ===== Debug panel =====
@@ -250,6 +371,7 @@ export function updateDebugPanel(): void {
 
   const arVideo = getARVideoElement();
   const viewport = getViewportSize();
+  const videoRect = arVideo?.getBoundingClientRect();
   const rows: { label: string; value: string }[] = [
     { label: 'Mode', value: currentMode },
     { label: 'Focus', value: focusedPlanetId || 'none' },
@@ -261,6 +383,7 @@ export function updateDebugPanel(): void {
     { label: 'MrkFound', value: String(markerFoundCount) },
     { label: 'Videos', value: String(document.querySelectorAll('video').length) },
     { label: 'AR Vid', value: arVideo ? `${arVideo.videoWidth}x${arVideo.videoHeight}` : 'none' },
+    { label: 'Vid CSS', value: videoRect ? `${Math.round(videoRect.width)}x${Math.round(videoRect.height)}` : 'none' },
     { label: 'Viewport', value: `${viewport.width}x${viewport.height}` },
   ];
 
@@ -328,8 +451,10 @@ export async function initARScene(onProgress?: ProgressCallback): Promise<void> 
   document.body.classList.add('ar-active');
   updateViewportSize();
   window.addEventListener('resize', updateViewportSize);
+  window.addEventListener('orientationchange', updateViewportSize);
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateViewportSize);
+    window.visualViewport.addEventListener('scroll', updateViewportSize);
   }
 
   await loadScript('https://aframe.io/releases/1.6.0/aframe.min.js');
@@ -351,45 +476,38 @@ function updateViewportSize(): void {
 }
 
 function fitARSurfaceElements(): void {
-  const applyFullscreen = (el: HTMLElement) => {
-    const styles: Record<string, string> = {
-      position: 'absolute',
-      inset: '0',
-      width: '100%',
-      height: '100%',
-      'min-width': '100%',
-      'min-height': '100%',
-      'max-width': 'none',
-      'max-height': 'none',
-    };
+  if (isApplyingSurfaceFit) return;
+  isApplyingSurfaceFit = true;
 
-    Object.entries(styles).forEach(([property, value]) => {
-      el.style.setProperty(property, value, 'important');
+  try {
+    const { width, height } = getARViewportSize();
+    const arPage = document.getElementById('ar-page') as HTMLElement | null;
+    const container = document.getElementById('ar-scene-container');
+
+    if (arPage) {
+      applySurfaceBox(arPage, width, height);
+      arPage.style.setProperty('position', 'fixed', 'important');
+    }
+    if (container) applySurfaceBox(container, width, height);
+
+    document.querySelectorAll<HTMLElement>('#ar-scene-container a-scene').forEach((el) => {
+      applySurfaceBox(el, width, height);
+      el.style.setProperty('z-index', '2', 'important');
+      el.style.setProperty('background', 'transparent', 'important');
     });
-  };
 
-  const container = document.getElementById('ar-scene-container');
-  if (container) applyFullscreen(container);
+    document.querySelectorAll<HTMLElement>('#ar-scene-container canvas.a-canvas, #ar-scene-container .a-canvas').forEach((el) => {
+      applySurfaceBox(el, width, height);
+      el.style.setProperty('z-index', '2', 'important');
+      el.style.setProperty('background', 'transparent', 'important');
+    });
 
-  document.querySelectorAll<HTMLElement>('#ar-scene-container a-scene').forEach((el) => {
-    applyFullscreen(el);
-    el.style.setProperty('z-index', '2', 'important');
-    el.style.setProperty('background', 'transparent', 'important');
-  });
-
-  document.querySelectorAll<HTMLElement>('#ar-scene-container canvas.a-canvas, #ar-scene-container .a-canvas').forEach((el) => {
-    applyFullscreen(el);
-    el.style.setProperty('z-index', '2', 'important');
-    el.style.setProperty('background', 'transparent', 'important');
-  });
-
-  document.querySelectorAll<HTMLElement>('#ar-scene-container video').forEach((el) => {
-    applyFullscreen(el);
-    el.style.setProperty('z-index', '1', 'important');
-    el.style.setProperty('object-fit', 'cover', 'important');
-    el.style.setProperty('object-position', 'center center', 'important');
-    el.style.setProperty('background', 'transparent', 'important');
-  });
+    document.querySelectorAll<HTMLVideoElement>('#ar-scene-container video, body.ar-active > video, body.ar-active video#arjs-video').forEach((el) => {
+      applyVideoCoverBox(el, width, height);
+    });
+  } finally {
+    isApplyingSurfaceFit = false;
+  }
 }
 
 function refreshSceneDeviceLayout(): void {
@@ -397,8 +515,14 @@ function refreshSceneDeviceLayout(): void {
   const focusPos = getFocusPlanetModelPosition();
   const ssScale = getSolarSystemModelScale();
 
-  if (solarSystemModelRoot) solarSystemModelRoot.setAttribute('position', solarPos);
-  if (focusPlanetRoot) focusPlanetRoot.setAttribute('position', focusPos);
+  if (solarSystemModelRoot) {
+    solarSystemModelRoot.setAttribute('position', solarPos);
+    solarSystemModelRoot.setAttribute('rotation', SOLAR_SYSTEM_VIEW_ROTATION);
+  }
+  if (focusPlanetRoot) {
+    focusPlanetRoot.setAttribute('position', focusPos);
+    focusPlanetRoot.setAttribute('rotation', FOCUS_PLANET_VIEW_ROTATION);
+  }
   if (proceduralRoot) {
     proceduralRoot.setAttribute('position', solarPos);
     proceduralRoot.setAttribute('scale', `${ssScale} ${ssScale} ${ssScale}`);
@@ -437,9 +561,10 @@ function buildScene(onProgress?: ProgressCallback): void {
 
   sceneEl = document.createElement('a-scene');
   sceneEl.setAttribute('embedded', '');
-  sceneEl.setAttribute('arjs', 'sourceType: webcam; trackingMethod: best; debugUIEnabled: false;');
-  sceneEl.setAttribute('renderer', 'logarithmicDepthBuffer: true; precision: mediump; alpha: true; antialias: true;');
+  sceneEl.setAttribute('arjs', buildARJSAttribute());
+  sceneEl.setAttribute('renderer', 'logarithmicDepthBuffer: true; precision: mediump; alpha: true; antialias: true; colorManagement: true; sortObjects: true;');
   sceneEl.setAttribute('vr-mode-ui', 'enabled: false');
+  sceneEl.setAttribute('loading-screen', 'dotsColor: #6366f1; backgroundColor: #0a0e1a');
 
   markerEl = document.createElement('a-marker');
   markerEl.setAttribute('preset', 'hiro');
@@ -481,6 +606,7 @@ function buildScene(onProgress?: ProgressCallback): void {
   solarSystemModelRoot = document.createElement('a-entity');
   solarSystemModelRoot.setAttribute('id', 'solar-system-model-root');
   solarSystemModelRoot.setAttribute('position', solarPos);
+  solarSystemModelRoot.setAttribute('rotation', SOLAR_SYSTEM_VIEW_ROTATION);
   solarSystemModelRoot.setAttribute('scale', '1 1 1');
   solarSystemModelRoot.setAttribute('visible', 'true');
   markerEl.appendChild(solarSystemModelRoot);
@@ -489,6 +615,7 @@ function buildScene(onProgress?: ProgressCallback): void {
   focusPlanetRoot = document.createElement('a-entity');
   focusPlanetRoot.setAttribute('id', 'focus-planet-root');
   focusPlanetRoot.setAttribute('position', focusPos);
+  focusPlanetRoot.setAttribute('rotation', FOCUS_PLANET_VIEW_ROTATION);
   focusPlanetRoot.setAttribute('scale', '1 1 1');
   focusPlanetRoot.setAttribute('visible', 'false');
   markerEl.appendChild(focusPlanetRoot);
@@ -566,12 +693,24 @@ function loadSolarSystemGLB(): void {
 
 // ===== Procedural Fallback =====
 
+// Horizontal layout offsets untuk planets (X position dari center)
+const PLANET_X_POSITIONS: Record<string, number> = {
+  'mercury': -2.1,
+  'venus': -1.5,
+  'earth': -0.8,
+  'mars': 0.0,
+  'jupiter': 0.8,
+  'saturn': 1.6,
+  'uranus': 2.3,
+  'neptune': 2.9,
+};
+
 function buildProceduralSolarSystem(parent: HTMLElement): void {
   const baseUrl = getTextureBaseUrl();
-  // Sun
+  // Sun - posisi di kiri dengan jarak yang sesuai
   const sun = document.createElement('a-sphere');
-  sun.setAttribute('radius', String(sunData.radius));
-  sun.setAttribute('position', '0 0 0');
+  sun.setAttribute('radius', String(sunData.radius * 1.2)); // Sedikit lebih besar dari default
+  sun.setAttribute('position', '-2.6 0 0'); // Sun di kiri, di luar planet lain
   sun.setAttribute('self-rotation', `speed: 10; paused: ${isPaused}`);
   sun.setAttribute('material', `color: ${sunData.color}; shader: flat;`);
   tryLoadTexture(sun, baseUrl + sunData.texturePath, sunData.color);
@@ -586,40 +725,51 @@ function buildProceduralSolarSystem(parent: HTMLElement): void {
 
 function buildProceduralPlanet(parent: HTMLElement, planet: Planet, baseUrl: string): void {
   const group = document.createElement('a-entity');
-  const orbitPath = document.createElement('a-ring');
-  orbitPath.setAttribute('radius-inner', String(planet.orbitRadius - 0.003));
-  orbitPath.setAttribute('radius-outer', String(planet.orbitRadius + 0.003));
-  orbitPath.setAttribute('color', '#FFFFFF'); orbitPath.setAttribute('opacity', '0.1');
-  orbitPath.setAttribute('rotation', '-90 0 0'); orbitPath.setAttribute('segments-theta', '64');
-  orbitPath.setAttribute('material', 'side: double; transparent: true; shader: flat;');
-  group.appendChild(orbitPath);
+  const xPos = PLANET_X_POSITIONS[planet.id] ?? 0;
 
-  const pivot = document.createElement('a-entity');
-  pivot.setAttribute('orbit-rotation', `speed: ${planet.orbitSpeed * 40}; paused: ${isPaused}`);
+  // Orbit line (subtle horizontal line instead of ring)
+  const orbitLine = document.createElement('a-entity');
+  orbitLine.setAttribute('line', `start: -3 0 0; end: 3 0 0; color: #FFFFFF; opacity: 0.08`);
+  group.appendChild(orbitLine);
+
+  // Planet sphere dengan posisi horizontal
   const sphere = document.createElement('a-sphere');
   sphere.setAttribute('class', 'clickable-planet');
   sphere.setAttribute('data-planet-id', planet.id);
   sphere.setAttribute('radius', String(planet.radius));
-  sphere.setAttribute('position', `${planet.orbitRadius} 0 0`);
+  sphere.setAttribute('position', `${xPos} 0 0`);
   sphere.setAttribute('self-rotation', `speed: ${planet.rotationSpeed * 50}; paused: ${isPaused}`);
   sphere.setAttribute('material', `color: ${planet.color}; shader: flat;`);
   tryLoadTexture(sphere, baseUrl + planet.texturePath, planet.color);
   sphere.addEventListener('click', () => onPlanetTap?.(planet.id));
-  pivot.appendChild(sphere);
+  group.appendChild(sphere);
 
+  // Saturn ring - khusus untuk Saturn dengan posisi horizontal
   if (planet.id === 'saturn') {
+    // Cincin Saturn dengan offset z kecil untuk mencegah z-fighting
     const ring = document.createElement('a-ring');
-    ring.setAttribute('radius-inner', String(planet.radius * 1.3));
-    ring.setAttribute('radius-outer', String(planet.radius * 2.2));
-    ring.setAttribute('color', '#E8D191'); ring.setAttribute('opacity', '0.7');
-    ring.setAttribute('rotation', '-75 0 0');
-    ring.setAttribute('position', `${planet.orbitRadius} 0 0`);
-    ring.setAttribute('segments-theta', '64');
-    ring.setAttribute('material', 'side: double; transparent: true; shader: flat;');
-    pivot.appendChild(ring);
+    ring.setAttribute('radius-inner', String(planet.radius * 1.4));
+    ring.setAttribute('radius-outer', String(planet.radius * 2.4));
+    ring.setAttribute('color', '#D4B896'); ring.setAttribute('opacity', '0.8');
+    // Rotation horizontal untuk tampilan terbaik dari atas
+    ring.setAttribute('rotation', '-20 15 25');
+    ring.setAttribute('position', `${xPos} 0 0.02`);
+    ring.setAttribute('segments-theta', '72');
+    ring.setAttribute('material', 'side: double; transparent: true; opacity: 0.8; shader: flat;');
+    group.appendChild(ring);
+
+    // Inner ring detail
+    const innerRing = document.createElement('a-ring');
+    innerRing.setAttribute('radius-inner', String(planet.radius * 1.2));
+    innerRing.setAttribute('radius-outer', String(planet.radius * 1.5));
+    innerRing.setAttribute('color', '#C4A876'); innerRing.setAttribute('opacity', '0.5');
+    innerRing.setAttribute('rotation', '-20 15 25');
+    innerRing.setAttribute('position', `${xPos} 0 0.01`);
+    innerRing.setAttribute('segments-theta', '72');
+    innerRing.setAttribute('material', 'side: double; transparent: true; opacity: 0.5; shader: flat;');
+    group.appendChild(innerRing);
   }
 
-  group.appendChild(pivot);
   parent.appendChild(group);
 }
 
@@ -774,25 +924,9 @@ function fixCameraVideoElement(): void {
     if (!container) return;
     adoptARVideo();
     fitARSurfaceElements();
-    container.querySelectorAll('video').forEach((video) => {
-      video.style.setProperty('position', 'absolute', 'important');
-      video.style.setProperty('inset', '0', 'important');
-      video.style.setProperty('width', '100%', 'important');
-      video.style.setProperty('height', '100%', 'important');
-      video.style.setProperty('min-width', '100%', 'important');
-      video.style.setProperty('min-height', '100%', 'important');
-      video.style.setProperty('max-width', 'none', 'important');
-      video.style.setProperty('max-height', 'none', 'important');
-      video.style.setProperty('object-fit', 'cover', 'important');
-      video.style.setProperty('object-position', 'center center', 'important');
-      video.style.setProperty('z-index', '1', 'important');
-      video.style.setProperty('display', 'block', 'important');
-      video.style.setProperty('opacity', '1', 'important');
-      video.style.setProperty('visibility', 'visible', 'important');
-      video.style.setProperty('background', 'transparent', 'important');
-      video.style.setProperty('transform', 'none', 'important');
-      video.style.setProperty('-webkit-transform', 'none', 'important');
-      video.style.setProperty('pointer-events', 'none', 'important');
+    const viewport = getARViewportSize();
+    document.querySelectorAll<HTMLVideoElement>('#ar-scene-container video, body.ar-active > video, body.ar-active video#arjs-video').forEach((video) => {
+      applyVideoCoverBox(video, viewport.width, viewport.height);
       video.setAttribute('playsinline', '');
       video.setAttribute('webkit-playsinline', '');
       video.playsInline = true;
@@ -800,12 +934,28 @@ function fixCameraVideoElement(): void {
     });
   };
   apply();
-  setTimeout(apply, 500); setTimeout(apply, 1500); setTimeout(apply, 3000);
+  VIDEO_REFIT_DELAYS.forEach((delayMs) => setTimeout(apply, delayMs));
 
   if (!(window as any).__arVideoObserver) {
-    const observer = new MutationObserver(() => { adoptARVideo(); apply(); forceTransparentRenderer(); });
+    const observer = new MutationObserver(() => {
+      if (isApplyingSurfaceFit) return;
+      adoptARVideo();
+      scheduleSurfaceFit();
+      forceTransparentRenderer();
+    });
     observer.observe(document.body, { childList: true, subtree: true });
     (window as any).__arVideoObserver = observer;
+  }
+
+  if (!(window as any).__arVideoFitTimer) {
+    (window as any).__arVideoFitTimer = window.setInterval(() => {
+      if (!document.body.classList.contains('ar-active')) {
+        window.clearInterval((window as any).__arVideoFitTimer);
+        (window as any).__arVideoFitTimer = null;
+        return;
+      }
+      apply();
+    }, 750);
   }
 }
 
@@ -872,6 +1022,13 @@ export function destroyScene(): void {
   debugLog('destroyScene: start');
 
   try { const obs = (window as any).__arVideoObserver; if (obs) { obs.disconnect(); (window as any).__arVideoObserver = null; } } catch (_) { /* */ }
+  try {
+    const fitTimer = (window as any).__arVideoFitTimer;
+    if (fitTimer) {
+      window.clearInterval(fitTimer);
+      (window as any).__arVideoFitTimer = null;
+    }
+  } catch (_) { /* */ }
 
   document.querySelectorAll('video').forEach((video) => {
     try {
@@ -902,8 +1059,10 @@ export function destroyScene(): void {
 
   // Remove viewport listener
   window.removeEventListener('resize', updateViewportSize);
+  window.removeEventListener('orientationchange', updateViewportSize);
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', updateViewportSize);
+    window.visualViewport.removeEventListener('scroll', updateViewportSize);
   }
 
   document.documentElement.classList.remove('ar-active');

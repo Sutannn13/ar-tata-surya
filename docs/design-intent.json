@@ -3,17 +3,18 @@
   "project": {
     "name": "ar-tata-surya",
     "context": "WebAR solar system learning app",
-    "scope": "Bugfix: camera layering, marker-relative GLB scale normalization, GLB material texture recovery, compact focus overlays, safe AR-to-landing cleanup, and debug telemetry. No visual redesign.",
+    "scope": "Bugfix: camera layering, Android viewport cover fitting, marker-relative GLB scale normalization, tilted GLB presentation, GLB material texture recovery, compact focus overlays, safe AR-to-landing cleanup, and debug telemetry. No visual redesign.",
     "assumptionsToValidate": [
       "AR.js injects and sizes a camera video element into the DOM.",
       "Camera permissions are granted before AR start.",
       "GLB assets may have inconsistent source dimensions and pivot centers.",
-      "Some planet GLBs may use legacy material extensions that need runtime texture recovery."
+      "Some planet GLBs may use legacy material extensions that need runtime texture recovery.",
+      "Android camera streams may have an aspect ratio that does not match the mobile visual viewport."
     ]
   },
   "motionPaletteDecision": {
     "motionDensity": "low-functional",
-    "densityDecisionSource": "Compact focus controls, container-relative AR layer fitting, and debug-only scale/material telemetry keep the camera view dominant.",
+    "densityDecisionSource": "Compact focus controls, viewport-aware AR camera cover fitting, tilted model framing, and debug-only scale/material telemetry keep the camera view dominant.",
     "requiredInteractionStates": [
       "default",
       "loading",
@@ -23,8 +24,8 @@
       "focus-selected",
       "detail-expanded"
     ],
-    "paletteAutopilotRisk": "avoid opaque overlays or forced renderer dimensions that hide camera feed",
-    "spatialDecision": "3d-canvas-required-for-ar-scene; model scale is normalized with bounding boxes before display and material identity is recovered when GLB maps are missing"
+    "paletteAutopilotRisk": "avoid opaque overlays, undersized video layers, or forced renderer dimensions that hide camera feed",
+    "spatialDecision": "3d-canvas-required-for-ar-scene; model scale is normalized with bounding boxes, the solar-system GLB is tilted away from edge-on display, and material identity is recovered when GLB maps are missing"
   },
   "conceptualAnchor": {
     "name": "Optical Viewfinder Overlay",
@@ -33,7 +34,7 @@
     "sourceDomain": "optical instrumentation",
     "specificReferencePoint": "camera viewfinder frame and matte box",
     "rationale": "Layering, occlusion control, model fit, material identity, and page cleanup should mimic a viewfinder: camera feed is base, overlays are transparent and precise, and the object stays readable inside the marker frame.",
-    "signatureMotion": "status overlays fade in/out quickly while GLB objects rotate slowly from an identity-first orientation inside a bounded marker-relative frame",
+    "signatureMotion": "status overlays fade in/out quickly while GLB objects rotate slowly from a tilted identity-first orientation inside a bounded marker-relative frame",
     "typographicDecision": "display for titles, body for instructions, monospace for debug data",
     "derivedTokenLogic": {
       "anchorReference": "Optical viewfinder with matte box and HUD markings",
@@ -52,8 +53,8 @@
     "colorDerivationSource": "Existing dark UI overlays are retained, but camera feed stays visible and is not covered by renderer fallback black.",
     "spacingDerivationSource": "Spacing favors top chip scanning and bottom compact disclosure to keep the marker center unobstructed.",
     "typographyDerivationSource": "Display and body roles are preserved for clarity in small screens.",
-    "motionDerivationSource": "Short status fades and slow model rotation follow the optical viewfinder anchor without decorative overlay motion.",
-    "validationRule": "No overlay, viewport calculation, normalized GLB, or AR cleanup path should hide the camera feed, crop the AR page width, leave stale AR state on landing, or erase planet texture identity when video is ready."
+    "motionDerivationSource": "Short status fades and slow tilted model rotation follow the optical viewfinder anchor without decorative overlay motion.",
+    "validationRule": "No overlay, viewport calculation, normalized GLB, tilted model presentation, or AR cleanup path should hide the camera feed, crop the AR page width, leave stale AR state on landing, or erase planet texture identity when video is ready."
   },
   "libraryResearchStatus": "not-required",
   "libraryDecisions": [
