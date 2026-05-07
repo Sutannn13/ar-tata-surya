@@ -16,6 +16,7 @@ import {
   getDeviceProfile, getSolarSystemTargetSize,
   getFocusPlanetTargetSize, getPlanetFocusTargetSize,
   getSolarSystemModelPosition, getFocusPlanetModelPosition,
+  type DeviceProfile,
 } from '../data/planets';
 import { registerAllComponents } from './aframeComponents';
 
@@ -49,6 +50,10 @@ let dragStartOffsetZ = 0;
 let offsetX = 0;
 let offsetY = 0;
 let offsetZ = 0;
+
+// Camera switch state
+let currentFacingMode: 'environment' | 'user' = 'environment';
+let cameraSwitchCallback: ((facing: 'environment' | 'user') => void) | null = null;
 
 const loadedModels: Set<string> = new Set();
 const textureCache: Map<string, any> = new Map();
@@ -96,15 +101,23 @@ function resolvePublicAssetPath(assetPath: string): string {
 }
 
 function buildARJSAttribute(): string {
-  const viewport = getViewportSize();
+  // Gunakan dimensi stabil yang umum untuk camera stream
+  // Jangan gunakan viewport portrait karena AR.js akan zoom-in
+  // 640x480 adalah rasio 4:3 yang stabil dan tidak crop terlalu banyak
+  const sourceWidth = 640;
+  const sourceHeight = 480;
+
+  // Valid AR.js properties only - no markersAreaEnabled or invalid properties
   return [
     'sourceType: webcam',
     'trackingMethod: best',
     'debugUIEnabled: false',
-    `displayWidth: ${viewport.width}`,
-    `displayHeight: ${viewport.height}`,
-    'sourceWidth: ' + viewport.width,
-    'sourceHeight: ' + viewport.height,
+    // displayWidth/displayHeight untuk output canvas
+    `displayWidth: ${window.innerWidth || 640}`,
+    `displayHeight: ${window.innerHeight || 480}`,
+    // source dimensions untuk camera stream processing
+    `sourceWidth: ${sourceWidth}`,
+    `sourceHeight: ${sourceHeight}`,
   ].join('; ');
 }
 
@@ -294,21 +307,29 @@ function applyVideoCoverBox(video: HTMLVideoElement, viewportWidth: number, view
   const intrinsic = getVideoIntrinsicSize(video);
   const videoAspect = intrinsic.width / intrinsic.height;
   const viewportAspect = viewportWidth / viewportHeight;
-  let coverWidth = viewportWidth;
-  let coverHeight = viewportHeight;
+
+  // Untuk mencegah zoom-in/crop, gunakan contain logic
+  // Video akan fit penuh di dalam viewport tanpa crop
+  let fitWidth: number;
+  let fitHeight: number;
 
   if (Number.isFinite(videoAspect) && videoAspect > 0 && Number.isFinite(viewportAspect) && viewportAspect > 0) {
     if (videoAspect > viewportAspect) {
-      coverHeight = viewportHeight;
-      coverWidth = Math.ceil(coverHeight * videoAspect);
+      // Video lebih lebar - fit berdasarkan lebar
+      fitWidth = viewportWidth;
+      fitHeight = Math.ceil(viewportWidth / videoAspect);
     } else {
-      coverWidth = viewportWidth;
-      coverHeight = Math.ceil(coverWidth / videoAspect);
+      // Video lebih tinggi - fit berdasarkan tinggi
+      fitHeight = viewportHeight;
+      fitWidth = Math.ceil(viewportHeight * videoAspect);
     }
+  } else {
+    fitWidth = viewportWidth;
+    fitHeight = viewportHeight;
   }
 
-  const left = Math.floor((viewportWidth - coverWidth) / 2);
-  const top = Math.floor((viewportHeight - coverHeight) / 2);
+  const left = Math.floor((viewportWidth - fitWidth) / 2);
+  const top = Math.floor((viewportHeight - fitHeight) / 2);
 
   const styles: Record<string, string> = {
     position: 'absolute',
@@ -316,20 +337,21 @@ function applyVideoCoverBox(video: HTMLVideoElement, viewportWidth: number, view
     left: `${left}px`,
     right: 'auto',
     bottom: 'auto',
-    width: `${coverWidth}px`,
-    height: `${coverHeight}px`,
-    'min-width': `${coverWidth}px`,
-    'min-height': `${coverHeight}px`,
+    width: `${fitWidth}px`,
+    height: `${fitHeight}px`,
+    'min-width': `${fitWidth}px`,
+    'min-height': `${fitHeight}px`,
     'max-width': 'none',
     'max-height': 'none',
     margin: '0',
-    'object-fit': 'cover',
+    // Gunakan contain agar video tidak crop/zoom
+    'object-fit': 'contain',
     'object-position': 'center center',
+    'background': '#000',
     'z-index': '1',
     display: 'block',
     opacity: '1',
     visibility: 'visible',
-    background: 'transparent',
     transform: 'none',
     '-webkit-transform': 'none',
     'pointer-events': 'none',
@@ -694,79 +716,108 @@ function loadSolarSystemGLB(): void {
 // ===== Procedural Fallback =====
 
 // Horizontal layout offsets untuk planets (X position dari center)
+// Sun di paling kiri, planets berurutan ke kanan
 const PLANET_X_POSITIONS: Record<string, number> = {
-  'mercury': -2.1,
-  'venus': -1.5,
-  'earth': -0.8,
-  'mars': 0.0,
-  'jupiter': 0.8,
-  'saturn': 1.6,
-  'uranus': 2.3,
-  'neptune': 2.9,
+  'sun': -2.40,      // Sun di kiri
+  'mercury': -1.70,
+  'venus': -1.20,
+  'earth': -0.75,
+  'mars': -0.35,
+  'jupiter': 0.25,
+  'saturn': 0.95,
+  'uranus': 1.60,
+  'neptune': 2.15,
+};
+
+// Scale factors untuk procedural planets
+const PLANET_SCALES: Record<string, number> = {
+  'sun': 1.0,
+  'mercury': 0.35,
+  'venus': 0.55,
+  'earth': 0.60,
+  'mars': 0.45,
+  'jupiter': 0.90,
+  'saturn': 0.80,    // body only, ring adds visual size
+  'uranus': 0.65,
+  'neptune': 0.60,
 };
 
 function buildProceduralSolarSystem(parent: HTMLElement): void {
   const baseUrl = getTextureBaseUrl();
-  // Sun - posisi di kiri dengan jarak yang sesuai
+
+  // Create parent group for horizontal layout
+  const solarGroup = document.createElement('a-entity');
+  solarGroup.setAttribute('id', 'solar-system-horizontal');
+  solarGroup.setAttribute('position', '0 0 0');
+
+  // Sun - positioned on the left, moderately sized
   const sun = document.createElement('a-sphere');
-  sun.setAttribute('radius', String(sunData.radius * 1.2)); // Sedikit lebih besar dari default
-  sun.setAttribute('position', '-2.6 0 0'); // Sun di kiri, di luar planet lain
-  sun.setAttribute('self-rotation', `speed: 10; paused: ${isPaused}`);
-  sun.setAttribute('material', `color: ${sunData.color}; shader: flat;`);
+  sun.setAttribute('radius', '0.50');  // Reasonable size
+  sun.setAttribute('position', `${PLANET_X_POSITIONS['sun']} 0 0`);
+  sun.setAttribute('self-rotation', `speed: 8; paused: ${isPaused}`);
+  sun.setAttribute('material', `color: ${sunData.color}; shader: standard; emissive: #FDB813; emissiveIntensity: 0.3;`);
   tryLoadTexture(sun, baseUrl + sunData.texturePath, sunData.color);
   const light = document.createElement('a-light');
-  light.setAttribute('type', 'point'); light.setAttribute('intensity', '0.5');
-  light.setAttribute('distance', '6'); light.setAttribute('color', '#FFF8E7');
+  light.setAttribute('type', 'point');
+  light.setAttribute('intensity', '0.6');
+  light.setAttribute('distance', '8');
+  light.setAttribute('color', '#FFF8E7');
   sun.appendChild(light);
-  parent.appendChild(sun);
+  solarGroup.appendChild(sun);
 
-  planets.forEach((p) => buildProceduralPlanet(parent, p, baseUrl));
+  planets.forEach((p) => buildProceduralPlanet(solarGroup, p, baseUrl));
+
+  parent.appendChild(solarGroup);
 }
 
 function buildProceduralPlanet(parent: HTMLElement, planet: Planet, baseUrl: string): void {
   const group = document.createElement('a-entity');
   const xPos = PLANET_X_POSITIONS[planet.id] ?? 0;
+  const scale = PLANET_SCALES[planet.id] ?? 0.5;
 
-  // Orbit line (subtle horizontal line instead of ring)
+  // Orbit line (subtle horizontal reference)
   const orbitLine = document.createElement('a-entity');
-  orbitLine.setAttribute('line', `start: -3 0 0; end: 3 0 0; color: #FFFFFF; opacity: 0.08`);
+  orbitLine.setAttribute('line', `start: -3 0 0; end: 3 0 0; color: #FFFFFF; opacity: 0.06`);
   group.appendChild(orbitLine);
 
-  // Planet sphere dengan posisi horizontal
+  // Planet sphere dengan posisi horizontal dan proper scale
   const sphere = document.createElement('a-sphere');
   sphere.setAttribute('class', 'clickable-planet');
   sphere.setAttribute('data-planet-id', planet.id);
-  sphere.setAttribute('radius', String(planet.radius));
+  sphere.setAttribute('radius', String(planet.radius * scale));
   sphere.setAttribute('position', `${xPos} 0 0`);
   sphere.setAttribute('self-rotation', `speed: ${planet.rotationSpeed * 50}; paused: ${isPaused}`);
-  sphere.setAttribute('material', `color: ${planet.color}; shader: flat;`);
+  sphere.setAttribute('material', `color: ${planet.color}; shader: standard; metalness: 0.2; roughness: 0.8;`);
   tryLoadTexture(sphere, baseUrl + planet.texturePath, planet.color);
   sphere.addEventListener('click', () => onPlanetTap?.(planet.id));
   group.appendChild(sphere);
 
-  // Saturn ring - khusus untuk Saturn dengan posisi horizontal
+  // Saturn ring - positioned relative to planet, horizontal view
   if (planet.id === 'saturn') {
-    // Cincin Saturn dengan offset z kecil untuk mencegah z-fighting
+    const planetRadius = planet.radius * scale;
+
+    // Main ring
     const ring = document.createElement('a-ring');
-    ring.setAttribute('radius-inner', String(planet.radius * 1.4));
-    ring.setAttribute('radius-outer', String(planet.radius * 2.4));
-    ring.setAttribute('color', '#D4B896'); ring.setAttribute('opacity', '0.8');
-    // Rotation horizontal untuk tampilan terbaik dari atas
-    ring.setAttribute('rotation', '-20 15 25');
-    ring.setAttribute('position', `${xPos} 0 0.02`);
-    ring.setAttribute('segments-theta', '72');
-    ring.setAttribute('material', 'side: double; transparent: true; opacity: 0.8; shader: flat;');
+    ring.setAttribute('radius-inner', String(planetRadius * 1.5));
+    ring.setAttribute('radius-outer', String(planetRadius * 2.5));
+    ring.setAttribute('color', '#D4B896');
+    ring.setAttribute('opacity', '0.85');
+    ring.setAttribute('rotation', '-20 0 15');
+    ring.setAttribute('position', `${xPos} 0 0.01`);
+    ring.setAttribute('segments-theta', '64');
+    ring.setAttribute('material', 'side: double; transparent: true; opacity: 0.85; shader: standard;');
     group.appendChild(ring);
 
-    // Inner ring detail
+    // Inner gap ring
     const innerRing = document.createElement('a-ring');
-    innerRing.setAttribute('radius-inner', String(planet.radius * 1.2));
-    innerRing.setAttribute('radius-outer', String(planet.radius * 1.5));
-    innerRing.setAttribute('color', '#C4A876'); innerRing.setAttribute('opacity', '0.5');
-    innerRing.setAttribute('rotation', '-20 15 25');
-    innerRing.setAttribute('position', `${xPos} 0 0.01`);
-    innerRing.setAttribute('segments-theta', '72');
-    innerRing.setAttribute('material', 'side: double; transparent: true; opacity: 0.5; shader: flat;');
+    innerRing.setAttribute('radius-inner', String(planetRadius * 1.2));
+    innerRing.setAttribute('radius-outer', String(planetRadius * 1.4));
+    innerRing.setAttribute('color', '#C4A876');
+    innerRing.setAttribute('opacity', '0.5');
+    innerRing.setAttribute('rotation', '-20 0 15');
+    innerRing.setAttribute('position', `${xPos} 0 0.005`);
+    innerRing.setAttribute('segments-theta', '64');
+    innerRing.setAttribute('material', 'side: double; transparent: true; opacity: 0.5; shader: standard;');
     group.appendChild(innerRing);
   }
 
@@ -822,6 +873,36 @@ export function enterFocusMode(planetId: string): void {
   debugLog('Entered focus mode:', planetId);
 }
 
+// Target diameter untuk single planet (AR world units)
+const PLANET_FOCUS_DIAMETERS: Record<string, number> = {
+  'mercury': 0.35,
+  'venus': 0.40,
+  'earth': 0.45,
+  'mars': 0.38,
+  'jupiter': 0.50,
+  'saturn': 0.45,  // body only, ring will extend further
+  'uranus': 0.42,
+  'neptune': 0.42,
+  'sun': 0.60,     // Sun should not be too large
+};
+
+// Device-specific caps (max diameter as % of marker/screen height)
+const PLANET_FOCUS_SIZE_CAPS: Record<DeviceProfile, number> = {
+  'small-phone': 0.35,
+  'phone': 0.40,
+  'large-phone': 0.45,
+  'tablet': 0.50,
+  'desktop': 0.55,
+};
+
+export function getFocusPlanetDiameter(planetId: string): number {
+  const baseDiameter = PLANET_FOCUS_DIAMETERS[planetId] ?? 0.40;
+  const profile = getDeviceProfile();
+  const cap = PLANET_FOCUS_SIZE_CAPS[profile];
+  // Cap the size to not exceed device limit
+  return Math.min(baseDiameter, cap);
+}
+
 export function updateFocusPlanet(planetId: string): void {
   const planet = getPlanetById(planetId);
   if (!planet || !focusPlanetRoot) return;
@@ -829,51 +910,87 @@ export function updateFocusPlanet(planetId: string): void {
   clearFocusPlanet();
   focusedPlanetId = planetId;
 
-  const fallbackScale = getFocusPlanetScale(planetId);
-  const focusTargetSize = getPlanetFocusTargetSize(planetId);
-  const focusMultiplier = planet.focusTargetSizeMultiplier ?? 1;
+  // Get capped diameter for this planet
+  const targetDiameter = getFocusPlanetDiameter(planetId);
+  const targetRadius = targetDiameter / 2;
+
+  // Create wrapper for positioning
   const wrapper = document.createElement('a-entity');
   wrapper.setAttribute('id', 'focus-planet-entity');
+  // Always use uniform scale: 1 1 1, control size via radius
   wrapper.setAttribute('scale', '1 1 1');
-  wrapper.setAttribute('position', planet.modelPositionOffset ?? '0 0 0');
-  if (planet.modelRotationOffset) {
-    wrapper.setAttribute('rotation', planet.modelRotationOffset);
-  }
+  wrapper.setAttribute('position', '0 0 0');
+  // No additional rotation offset to keep planet facing camera
+  wrapper.setAttribute('rotation', '0 0 0');
 
   // Try loading GLB
   const glbEntity = document.createElement('a-entity');
   glbEntity.setAttribute('id', 'focus-planet-glb');
   glbEntity.setAttribute('gltf-model', `url(${planet.modelPath})`);
   glbEntity.setAttribute('class', 'clickable-planet');
+  // Use auto-model-scale to normalize GLB to target diameter
   setAutoModelScale(glbEntity, {
-    targetSize: getFocusPlanetTargetSize(),
-    multiplier: focusMultiplier,
-    fallbackScale,
+    targetSize: targetDiameter,
+    multiplier: 1,
+    fallbackScale: targetDiameter,
     modelName: planet.id,
   });
-  glbEntity.setAttribute('self-rotation', `speed: 25; paused: ${isPaused}`);
+  glbEntity.setAttribute('self-rotation', `speed: 20; paused: ${isPaused}`);
 
   glbEntity.addEventListener('model-loaded', () => {
-    debugLog(`${planet.id}.glb loaded for focus`, { focusTargetSize, fallbackScale });
-    recoverPlanetModelMaterials((glbEntity as any).getObject3D('mesh'), planet);
+    debugLog(`${planet.id}.glb loaded for focus`, { targetDiameter });
+    const mesh = (glbEntity as any).getObject3D('mesh');
+    recoverPlanetModelMaterials(mesh, planet);
+
+    // Special handling for Uranus - hide any ring meshes
+    if (planet.id === 'uranus' && mesh) {
+      mesh.traverse((child: any) => {
+        if (child?.isMesh) {
+          const name = child.name?.toLowerCase() || '';
+          const geometryName = child.geometry?.constructor?.name || '';
+          // Hide any ring, torus, or disk geometry for Uranus
+          if (name.includes('ring') || name.includes('torus') || name.includes('disk') ||
+              geometryName === 'TorusGeometry' || geometryName === 'RingGeometry' ||
+              geometryName === 'TorusKnotGeometry') {
+            child.visible = false;
+            debugLog('Hidden Uranus ring mesh:', name);
+          }
+        }
+      });
+    }
+
     loadedModels.add(planet.id);
   });
 
   glbEntity.addEventListener('model-error', () => {
     console.warn(`[AR] ${planet.id}.glb failed, using fallback sphere`);
-    // Remove failed glb entity
     glbEntity.remove();
-    // Add fallback sphere
+    // Create uniform sphere - radius ensures X=Y=Z
     const fallback = document.createElement('a-sphere');
     fallback.setAttribute('id', 'focus-planet-fallback');
-    fallback.setAttribute('radius', String(Math.max(focusTargetSize * 0.5, 0.08)));
+    fallback.setAttribute('radius', String(targetRadius));
     fallback.setAttribute('color', planet.fallbackColor);
-    fallback.setAttribute('material', `color: ${planet.fallbackColor}; shader: flat;`);
-    fallback.setAttribute('self-rotation', `speed: 25; paused: ${isPaused}`);
+    fallback.setAttribute('material', `color: ${planet.fallbackColor}; shader: standard; metalness: 0.3; roughness: 0.7;`);
+    fallback.setAttribute('self-rotation', `speed: 20; paused: ${isPaused}`);
     wrapper.appendChild(fallback);
   });
 
   wrapper.appendChild(glbEntity);
+
+  // Add Saturn ring if Saturn
+  if (planet.id === 'saturn') {
+    const ring = document.createElement('a-ring');
+    ring.setAttribute('radius-inner', String(targetRadius * 1.4));
+    ring.setAttribute('radius-outer', String(targetRadius * 2.2));
+    ring.setAttribute('color', '#D4B896');
+    ring.setAttribute('opacity', '0.85');
+    ring.setAttribute('rotation', '-15 0 15');
+    ring.setAttribute('position', '0 0 0.01');
+    ring.setAttribute('segments-theta', '64');
+    ring.setAttribute('material', 'side: double; transparent: true; opacity: 0.85; shader: standard;');
+    wrapper.appendChild(ring);
+  }
+
   focusPlanetRoot.appendChild(wrapper);
 }
 
@@ -898,6 +1015,24 @@ export function resetView(): void {
 
 export function getCurrentMode(): 'solar-system' | 'focus' { return currentMode; }
 export function getFocusedPlanetId(): string | null { return focusedPlanetId; }
+
+// ===== Camera Switch =====
+export function getCurrentFacingMode(): 'environment' | 'user' { return currentFacingMode; }
+
+export function onCameraFacingChange(cb: (facing: 'environment' | 'user') => void): void {
+  cameraSwitchCallback = cb;
+}
+
+export function switchCamera(): 'environment' | 'user' {
+  currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+  debugLog('Camera switched to:', currentFacingMode);
+
+  if (cameraSwitchCallback) {
+    cameraSwitchCallback(currentFacingMode);
+  }
+
+  return currentFacingMode;
+}
 
 // ===== Renderer / Video =====
 

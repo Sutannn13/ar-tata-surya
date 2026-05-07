@@ -1,6 +1,6 @@
 /**
  * UI Controls v3
- * 
+ *
  * Fitur:
  * - Planet selector chips
  * - Info panel compact/expand
@@ -8,6 +8,7 @@
  * - Solar system mode: solar_system.glb
  * - Tombol "Kembali ke Tata Surya"
  * - Tombol pause/play, zoom, reset, back
+ * - Camera switch (front/back)
  */
 
 import { planets, getPlanetById, type Planet } from '../data/planets';
@@ -21,6 +22,9 @@ import {
   onPlanetTapEvent,
   onModeChangeEvent,
   getCurrentMode,
+  switchCamera,
+  onCameraFacingChange,
+  getCurrentFacingMode,
 } from '../ar/solarSystem';
 
 let selectedPlanetId: string | null = null;
@@ -37,6 +41,7 @@ export function initControls(): void {
     bindControlButtons();
     setupPanelToggle();
     setupBackToSolarSystem();
+    setupCameraSwitch();
     controlsBound = true;
   }
 
@@ -186,6 +191,30 @@ function setupBackToSolarSystem(): void {
   if (btn) {
     btn.addEventListener('click', () => {
       exitFocusMode();
+    });
+  }
+}
+
+/**
+ * Setup camera switch button
+ */
+function setupCameraSwitch(): void {
+  const btnSwitchCamera = document.getElementById('btn-switch-camera');
+  if (btnSwitchCamera) {
+    btnSwitchCamera.addEventListener('click', () => {
+      // Note: AR.js marker tracking works best with back camera
+      // Front camera may cause tracking issues
+      const newFacing = switchCamera();
+
+      // Show feedback
+      const title = newFacing === 'environment' ? 'Kamera Belakang' : 'Kamera Depan';
+      console.log('[UI] Camera switched to:', title);
+
+      // For marker-based AR, it's recommended to use back camera
+      // Show warning if switched to front camera
+      if (newFacing === 'user') {
+        console.warn('[UI] Front camera may affect marker tracking quality');
+      }
     });
   }
 }

@@ -902,7 +902,17 @@ body.ar-active {
 }
 
 .ar-topbar-spacer {
-  width: 40px;
+  width: 44px;
+}
+
+/* Camera Switch Button */
+#btn-switch-camera {
+  margin-left: 0.5rem;
+}
+
+#btn-switch-camera .camera-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .ar-btn {
@@ -944,17 +954,25 @@ body.ar-active {
 /* Planet Selector */
 .planet-selector {
   padding: 0 0.75rem;
-  overflow: hidden;
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+  overflow: visible;
 }
 
 .planet-chips {
   display: flex;
   gap: 0.5rem;
   overflow-x: auto;
-  padding: 0.5rem 0;
+  overflow-y: hidden;
+  padding: 0.5rem 0.25rem;
+  padding-left: max(0.25rem, env(safe-area-inset-left));
+  padding-right: max(0.25rem, env(safe-area-inset-right));
   scrollbar-width: none;
   -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  /* Ensure first and last items have breathing room */
+  margin: 0 -0.25rem;
 }
 
 .planet-chips::-webkit-scrollbar {
@@ -979,6 +997,7 @@ body.ar-active {
   cursor: pointer;
   transition: all var(--transition);
   white-space: nowrap;
+  scroll-snap-align: start;
 }
 
 .planet-chip-dot {
