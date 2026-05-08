@@ -51,10 +51,6 @@ let offsetX = 0;
 let offsetY = 0;
 let offsetZ = 0;
 
-// Camera switch state
-let currentFacingMode: 'environment' | 'user' = 'environment';
-let cameraSwitchCallback: ((facing: 'environment' | 'user') => void) | null = null;
-
 const loadedModels: Set<string> = new Set();
 const textureCache: Map<string, any> = new Map();
 const SOLAR_SYSTEM_VIEW_ROTATION = '-30 0 0';
@@ -101,21 +97,19 @@ function resolvePublicAssetPath(assetPath: string): string {
 }
 
 function buildARJSAttribute(): string {
-  // Gunakan dimensi stabil yang umum untuk camera stream
-  // Jangan gunakan viewport portrait karena AR.js akan zoom-in
-  // 640x480 adalah rasio 4:3 yang stabil dan tidak crop terlalu banyak
-  const sourceWidth = 640;
+  // CRITICAL: displayWidth/displayHeight = viewport for full screen AR canvas
+  // sourceWidth/sourceHeight = actual camera stream resolution (4:3 stable)
+  const displayWidth = window.innerWidth;
+  const displayHeight = window.innerHeight;
+  const sourceWidth = 640;  // Fixed 4:3 camera resolution
   const sourceHeight = 480;
 
-  // Valid AR.js properties only - no markersAreaEnabled or invalid properties
   return [
     'sourceType: webcam',
     'trackingMethod: best',
     'debugUIEnabled: false',
-    // displayWidth/displayHeight untuk output canvas
-    `displayWidth: ${window.innerWidth || 640}`,
-    `displayHeight: ${window.innerHeight || 480}`,
-    // source dimensions untuk camera stream processing
+    `displayWidth: ${displayWidth}`,
+    `displayHeight: ${displayHeight}`,
     `sourceWidth: ${sourceWidth}`,
     `sourceHeight: ${sourceHeight}`,
   ].join('; ');
@@ -466,11 +460,57 @@ function loadScript(src: string): Promise<void> {
 
 function delay(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
 
+// ===== Camera Switch =====
+const CAMERA_FACING_STORAGE_KEY = 'arTataSurya_facingMode';
+
+export function getStoredFacingMode(): 'environment' | 'user' {
+  const stored = localStorage.getItem(CAMERA_FACING_STORAGE_KEY);
+  if (stored === 'user' || stored === 'environment') return stored;
+  return 'environment';
+}
+
+export function storeFacingMode(mode: 'environment' | 'user'): void {
+  localStorage.setItem(CAMERA_FACING_STORAGE_KEY, mode);
+  debugLog('Stored facing mode:', mode);
+}
+
+/**
+ * Patch getUserMedia to inject preferred facingMode before AR.js starts.
+ * This ensures camera switch works even with AR.js library.
+ */
+function patchGetUserMediaForCameraSwitch(): void {
+  const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+
+  navigator.mediaDevices.getUserMedia = (constraints: any): Promise<MediaStream> => {
+    const preferredFacing = getStoredFacingMode();
+
+    if (constraints && typeof constraints === 'object') {
+      const videoConstraints = constraints.video;
+      if (videoConstraints !== false && videoConstraints !== undefined) {
+        const videoObj = typeof videoConstraints === 'object' ? videoConstraints : {};
+        constraints.video = {
+          ...(typeof videoObj === 'object' ? videoObj : {}),
+          facingMode: { ideal: preferredFacing },
+        };
+        debugLog('getUserMedia patched with facingMode:', preferredFacing);
+      }
+    }
+
+    return originalGetUserMedia(constraints);
+  };
+
+  debugLog('getUserMedia patched for camera switch');
+}
+
 // ===== Init =====
 
 export async function initARScene(onProgress?: ProgressCallback): Promise<void> {
   document.documentElement.classList.add('ar-active');
   document.body.classList.add('ar-active');
+
+  // CRITICAL: Patch getUserMedia BEFORE A-Frame loads for camera switch
+  patchGetUserMediaForCameraSwitch();
+
   updateViewportSize();
   window.addEventListener('resize', updateViewportSize);
   window.addEventListener('orientationchange', updateViewportSize);
@@ -490,9 +530,7 @@ export async function initARScene(onProgress?: ProgressCallback): Promise<void> 
 // ===== Viewport =====
 
 function updateViewportSize(): void {
-  const { width, height } = getViewportSize();
-  document.documentElement.style.setProperty('--app-width', `${width}px`);
-  document.documentElement.style.setProperty('--app-height', `${height}px`);
+  forceCanvasResize();  // Force full viewport on resize/orientation change
   fitARSurfaceElements();
   refreshSceneDeviceLayout();
 }
@@ -670,6 +708,10 @@ function buildScene(onProgress?: ProgressCallback): void {
     debugLog('Scene loaded');
     forceTransparentRenderer();
     adoptARVideo();
+
+    // CRITICAL: Force canvas resize to full viewport
+    forceCanvasResize();
+
     fixCameraVideoElement();
     setupDragGesture();
     updateDebugPanel();
@@ -1017,21 +1059,43 @@ export function getCurrentMode(): 'solar-system' | 'focus' { return currentMode;
 export function getFocusedPlanetId(): string | null { return focusedPlanetId; }
 
 // ===== Camera Switch =====
-export function getCurrentFacingMode(): 'environment' | 'user' { return currentFacingMode; }
-
-export function onCameraFacingChange(cb: (facing: 'environment' | 'user') => void): void {
-  cameraSwitchCallback = cb;
+export function getCurrentFacingMode(): 'environment' | 'user' {
+  return getStoredFacingMode();
 }
 
 export function switchCamera(): 'environment' | 'user' {
-  currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-  debugLog('Camera switched to:', currentFacingMode);
+  // Toggle facing mode
+  const current = getStoredFacingMode();
+  const next: 'environment' | 'user' = current === 'environment' ? 'user' : 'environment';
 
-  if (cameraSwitchCallback) {
-    cameraSwitchCallback(currentFacingMode);
-  }
+  // Store new mode
+  storeFacingMode(next);
 
-  return currentFacingMode;
+  // Stop all camera tracks
+  stopAllCameraTracks();
+
+  // Reload page to reinitialize AR with new camera
+  debugLog('Camera switch: reloading to use', next);
+  window.location.reload();
+
+  return next;
+}
+
+function stopAllCameraTracks(): void {
+  document.querySelectorAll('video').forEach((video) => {
+    try {
+      const stream = video.srcObject as MediaStream;
+      if (stream) {
+        stream.getTracks().forEach((track) => {
+          track.stop();
+          debugLog('Stopped track:', track.kind);
+        });
+        video.srcObject = null;
+      }
+    } catch (e) {
+      debugLog('Error stopping tracks:', e);
+    }
+  });
 }
 
 // ===== Renderer / Video =====
@@ -1044,6 +1108,57 @@ function forceTransparentRenderer(): void {
   const canvas = document.querySelector('canvas.a-canvas') as HTMLCanvasElement | null;
   if (canvas) canvas.style.background = 'transparent';
   if (sceneEl) (sceneEl as HTMLElement).style.background = 'transparent';
+}
+
+/**
+ * Force A-Frame canvas and WebGL renderer to full viewport size.
+ * This prevents black bars and ensures AR fills the entire screen.
+ */
+function forceCanvasResize(): void {
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+
+  // 1. Update A-Frame renderer size directly via THREE.js
+  if (sceneEl) {
+    const renderer = (sceneEl as any).renderer;
+    if (renderer) {
+      renderer.setSize(width, height, false);
+      debugLog('Renderer resized to:', width, 'x', height);
+    }
+
+    // Update camera aspect ratio
+    const camera = (sceneEl as any).camera;
+    if (camera) {
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      debugLog('Camera aspect updated:', camera.aspect);
+    }
+  }
+
+  // 2. Force canvas CSS to full viewport
+  document.querySelectorAll<HTMLElement>('#ar-scene-container canvas, .a-canvas, canvas.a-canvas').forEach((canvas) => {
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    canvas.style.maxWidth = 'none';
+    canvas.style.maxHeight = 'none';
+    canvas.style.position = 'fixed';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+  });
+
+  // 3. Force video to full viewport
+  document.querySelectorAll<HTMLVideoElement>('#ar-scene-container video, video#arjs-video').forEach((video) => {
+    video.style.width = `${width}px`;
+    video.style.height = `${height}px`;
+    video.style.maxWidth = 'none';
+    video.style.maxHeight = 'none';
+    video.style.position = 'fixed';
+    video.style.top = '0';
+    video.style.left = '0';
+    video.style.objectFit = 'cover';
+  });
+
+  debugLog('forceCanvasResize done:', width, 'x', height);
 }
 
 function updateMarkerStatus(found: boolean): void {

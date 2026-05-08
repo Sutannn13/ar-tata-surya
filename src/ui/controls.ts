@@ -23,7 +23,6 @@ import {
   onModeChangeEvent,
   getCurrentMode,
   switchCamera,
-  onCameraFacingChange,
   getCurrentFacingMode,
 } from '../ar/solarSystem';
 
