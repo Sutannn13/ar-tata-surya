@@ -447,13 +447,36 @@ export function onModeChangeEvent(cb: ModeChangeCallback): void { onModeChange =
 
 function getTextureBaseUrl(): string { return window.location.origin + '/'; }
 
-function loadScript(src: string): Promise<void> {
+function loadScript(src: string, timeoutMs = 15000): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    // Check if already loaded
+    if (document.querySelector(`script[src="${src}"]`)) {
+      debugLog('[loadScript] Already loaded:', src);
+      resolve();
+      return;
+    }
+
     const s = document.createElement('script');
-    s.src = src; s.async = true;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error(`Failed to load: ${src}`));
+    s.src = src;
+    s.async = true;
+
+    // Timeout handler
+    const timeoutId = setTimeout(() => {
+      s.remove();
+      reject(new Error(`Timeout loading: ${src} (${timeoutMs}ms)`));
+    }, timeoutMs);
+
+    s.onload = () => {
+      clearTimeout(timeoutId);
+      debugLog('[loadScript] Loaded:', src);
+      resolve();
+    };
+    s.onerror = () => {
+      clearTimeout(timeoutId);
+      s.remove();
+      reject(new Error(`Failed to load: ${src}`));
+    };
+
     document.head.appendChild(s);
   });
 }
@@ -505,11 +528,14 @@ function patchGetUserMediaForCameraSwitch(): void {
 // ===== Init =====
 
 export async function initARScene(onProgress?: ProgressCallback): Promise<void> {
+  debugLog('[AR Startup] Beginning initialization...');
+
   document.documentElement.classList.add('ar-active');
   document.body.classList.add('ar-active');
 
   // CRITICAL: Patch getUserMedia BEFORE A-Frame loads for camera switch
   patchGetUserMediaForCameraSwitch();
+  debugLog('[AR Startup] getUserMedia patched with facingMode:', getStoredFacingMode());
 
   updateViewportSize();
   window.addEventListener('resize', updateViewportSize);
@@ -519,12 +545,35 @@ export async function initARScene(onProgress?: ProgressCallback): Promise<void> 
     window.visualViewport.addEventListener('scroll', updateViewportSize);
   }
 
-  await loadScript('https://aframe.io/releases/1.6.0/aframe.min.js');
-  onProgress?.('aframe-loaded');
-  await loadScript('https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js');
-  onProgress?.('arjs-loaded');
+  // Load A-Frame with timeout
+  debugLog('[AR Startup] Loading A-Frame...');
+  try {
+    await loadScript('https://aframe.io/releases/1.6.0/aframe.min.js', 15000);
+    debugLog('[AR Startup] A-Frame loaded successfully');
+    onProgress?.('aframe-loaded');
+  } catch (err) {
+    console.error('[AR Startup] Failed to load A-Frame:', err);
+    throw new Error('Gagal memuat A-Frame. Periksa koneksi internet.');
+  }
+
+  // Load AR.js with timeout
+  debugLog('[AR Startup] Loading AR.js...');
+  try {
+    await loadScript('https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js', 15000);
+    debugLog('[AR Startup] AR.js loaded successfully');
+    onProgress?.('arjs-loaded');
+  } catch (err) {
+    console.error('[AR Startup] Failed to load AR.js:', err);
+    throw new Error('Gagal memuat AR.js. Periksa koneksi internet.');
+  }
+
+  debugLog('[AR Startup] Registering components...');
   registerAllComponents();
-  buildScene(onProgress);
+  debugLog('[AR Startup] Building scene...');
+
+  // buildScene now returns a Promise
+  await buildScene(onProgress);
+  debugLog('[AR Startup] Scene build completed');
 }
 
 // ===== Viewport =====
@@ -614,108 +663,129 @@ function refreshSceneDeviceLayout(): void {
 
 // ===== Build Scene =====
 
-function buildScene(onProgress?: ProgressCallback): void {
-  const container = document.getElementById('ar-scene-container');
-  if (!container) return;
-  container.innerHTML = '';
+function buildScene(onProgress?: ProgressCallback): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const container = document.getElementById('ar-scene-container');
+    if (!container) {
+      reject(new Error('AR scene container not found'));
+      return;
+    }
+    container.innerHTML = '';
 
-  sceneEl = document.createElement('a-scene');
-  sceneEl.setAttribute('embedded', '');
-  sceneEl.setAttribute('arjs', buildARJSAttribute());
-  sceneEl.setAttribute('renderer', 'logarithmicDepthBuffer: true; precision: mediump; alpha: true; antialias: true; colorManagement: true; sortObjects: true;');
-  sceneEl.setAttribute('vr-mode-ui', 'enabled: false');
-  sceneEl.setAttribute('loading-screen', 'dotsColor: #6366f1; backgroundColor: #0a0e1a');
+    sceneEl = document.createElement('a-scene');
+    sceneEl.setAttribute('embedded', '');
+    sceneEl.setAttribute('arjs', buildARJSAttribute());
+    sceneEl.setAttribute('renderer', 'logarithmicDepthBuffer: true; precision: mediump; alpha: true; antialias: true; colorManagement: true; sortObjects: true;');
+    sceneEl.setAttribute('vr-mode-ui', 'enabled: false');
+    sceneEl.setAttribute('loading-screen', 'dotsColor: #6366f1; backgroundColor: #0a0e1a');
 
-  markerEl = document.createElement('a-marker');
-  markerEl.setAttribute('preset', 'hiro');
-  markerEl.setAttribute('smooth', 'true');
-  markerEl.setAttribute('smoothCount', '5');
-  markerEl.setAttribute('smoothTolerance', '0.01');
-  markerEl.setAttribute('smoothThreshold', '2');
+    markerEl = document.createElement('a-marker');
+    markerEl.setAttribute('preset', 'hiro');
+    markerEl.setAttribute('smooth', 'true');
+    markerEl.setAttribute('smoothCount', '5');
+    markerEl.setAttribute('smoothTolerance', '0.01');
+    markerEl.setAttribute('smoothThreshold', '2');
 
-  markerEl.addEventListener('markerFound', () => {
-    markerFoundCount++; markerVisible = true;
-    debugLog('markerFound', markerFoundCount);
-    updateDebugPanel();
-    updateMarkerStatus(true);
-  });
-  markerEl.addEventListener('markerLost', () => {
-    markerLostCount++; markerVisible = false;
-    debugLog('markerLost', markerLostCount);
-    updateDebugPanel();
-    updateMarkerStatus(false);
-  });
+    markerEl.addEventListener('markerFound', () => {
+      markerFoundCount++; markerVisible = true;
+      debugLog('markerFound', markerFoundCount);
+      updateDebugPanel();
+      updateMarkerStatus(true);
+    });
+    markerEl.addEventListener('markerLost', () => {
+      markerLostCount++; markerVisible = false;
+      debugLog('markerLost', markerLostCount);
+      updateDebugPanel();
+      updateMarkerStatus(false);
+    });
 
-  // Lights
-  const al = document.createElement('a-light');
-  al.setAttribute('type', 'ambient'); al.setAttribute('color', '#FFF'); al.setAttribute('intensity', '1.8');
-  markerEl.appendChild(al);
-  const dl = document.createElement('a-light');
-  dl.setAttribute('type', 'directional'); dl.setAttribute('color', '#FFF8E7');
-  dl.setAttribute('intensity', '0.8'); dl.setAttribute('position', '1 2 1');
-  markerEl.appendChild(dl);
-  const dl2 = document.createElement('a-light');
-  dl2.setAttribute('type', 'directional'); dl2.setAttribute('color', '#E8E0FF');
-  dl2.setAttribute('intensity', '0.4'); dl2.setAttribute('position', '-1 -1 -1');
-  markerEl.appendChild(dl2);
+    // Lights
+    const al = document.createElement('a-light');
+    al.setAttribute('type', 'ambient'); al.setAttribute('color', '#FFF'); al.setAttribute('intensity', '1.8');
+    markerEl.appendChild(al);
+    const dl = document.createElement('a-light');
+    dl.setAttribute('type', 'directional'); dl.setAttribute('color', '#FFF8E7');
+    dl.setAttribute('intensity', '0.8'); dl.setAttribute('position', '1 2 1');
+    markerEl.appendChild(dl);
+    const dl2 = document.createElement('a-light');
+    dl2.setAttribute('type', 'directional'); dl2.setAttribute('color', '#E8E0FF');
+    dl2.setAttribute('intensity', '0.4'); dl2.setAttribute('position', '-1 -1 -1');
+    markerEl.appendChild(dl2);
 
-  // Solar System Model Root (GLB mode)
-  const solarPos = getSolarSystemModelPosition();
-  const focusPos = getFocusPlanetModelPosition();
-  const ssScale = getSolarSystemModelScale();
-  solarSystemModelRoot = document.createElement('a-entity');
-  solarSystemModelRoot.setAttribute('id', 'solar-system-model-root');
-  solarSystemModelRoot.setAttribute('position', solarPos);
-  solarSystemModelRoot.setAttribute('rotation', SOLAR_SYSTEM_VIEW_ROTATION);
-  solarSystemModelRoot.setAttribute('scale', '1 1 1');
-  solarSystemModelRoot.setAttribute('visible', 'true');
-  markerEl.appendChild(solarSystemModelRoot);
+    // Solar System Model Root (GLB mode)
+    const solarPos = getSolarSystemModelPosition();
+    const focusPos = getFocusPlanetModelPosition();
+    const ssScale = getSolarSystemModelScale();
+    solarSystemModelRoot = document.createElement('a-entity');
+    solarSystemModelRoot.setAttribute('id', 'solar-system-model-root');
+    solarSystemModelRoot.setAttribute('position', solarPos);
+    solarSystemModelRoot.setAttribute('rotation', SOLAR_SYSTEM_VIEW_ROTATION);
+    solarSystemModelRoot.setAttribute('scale', '1 1 1');
+    solarSystemModelRoot.setAttribute('visible', 'true');
+    markerEl.appendChild(solarSystemModelRoot);
 
-  // Focus Planet Root
-  focusPlanetRoot = document.createElement('a-entity');
-  focusPlanetRoot.setAttribute('id', 'focus-planet-root');
-  focusPlanetRoot.setAttribute('position', focusPos);
-  focusPlanetRoot.setAttribute('rotation', FOCUS_PLANET_VIEW_ROTATION);
-  focusPlanetRoot.setAttribute('scale', '1 1 1');
-  focusPlanetRoot.setAttribute('visible', 'false');
-  markerEl.appendChild(focusPlanetRoot);
+    // Focus Planet Root
+    focusPlanetRoot = document.createElement('a-entity');
+    focusPlanetRoot.setAttribute('id', 'focus-planet-root');
+    focusPlanetRoot.setAttribute('position', focusPos);
+    focusPlanetRoot.setAttribute('rotation', FOCUS_PLANET_VIEW_ROTATION);
+    focusPlanetRoot.setAttribute('scale', '1 1 1');
+    focusPlanetRoot.setAttribute('visible', 'false');
+    markerEl.appendChild(focusPlanetRoot);
 
-  // Procedural Root (fallback)
-  proceduralRoot = document.createElement('a-entity');
-  proceduralRoot.setAttribute('id', 'procedural-root');
-  proceduralRoot.setAttribute('position', solarPos);
-  proceduralRoot.setAttribute('visible', 'false');
-  proceduralRoot.setAttribute('scale', `${ssScale} ${ssScale} ${ssScale}`);
-  markerEl.appendChild(proceduralRoot);
+    // Procedural Root (fallback)
+    proceduralRoot = document.createElement('a-entity');
+    proceduralRoot.setAttribute('id', 'procedural-root');
+    proceduralRoot.setAttribute('position', solarPos);
+    proceduralRoot.setAttribute('visible', 'false');
+    proceduralRoot.setAttribute('scale', `${ssScale} ${ssScale} ${ssScale}`);
+    markerEl.appendChild(proceduralRoot);
 
-  // Build procedural fallback (hidden by default)
-  buildProceduralSolarSystem(proceduralRoot);
+    // Build procedural fallback (hidden by default)
+    buildProceduralSolarSystem(proceduralRoot);
 
-  // Load solar_system.glb
-  loadSolarSystemGLB();
+    // Load solar_system.glb
+    loadSolarSystemGLB();
 
-  sceneEl.appendChild(markerEl);
+    sceneEl.appendChild(markerEl);
 
-  const cam = document.createElement('a-entity');
-  cam.setAttribute('camera', '');
-  cam.setAttribute('cursor', 'rayOrigin: mouse; fuse: false;');
-  cam.setAttribute('raycaster', 'objects: .clickable-planet; far: 100;');
-  sceneEl.appendChild(cam);
+    const cam = document.createElement('a-entity');
+    cam.setAttribute('camera', '');
+    cam.setAttribute('cursor', 'rayOrigin: mouse; fuse: false;');
+    cam.setAttribute('raycaster', 'objects: .clickable-planet; far: 100;');
+    sceneEl.appendChild(cam);
 
-  container.appendChild(sceneEl);
+    container.appendChild(sceneEl);
 
-  sceneEl.addEventListener('loaded', () => {
-    debugLog('Scene loaded');
-    forceTransparentRenderer();
-    adoptARVideo();
+    // Add timeout fallback - scene should load within 10 seconds
+    const sceneTimeout = setTimeout(() => {
+      debugLog('Scene load timeout - forcing scene ready');
+      forceTransparentRenderer();
+      adoptARVideo();
+      forceCanvasResize();
+      setupDragGesture();
+      updateDebugPanel();
+      onProgress?.('scene-ready');
+      resolve();
+    }, 10000);
 
-    // CRITICAL: Force canvas resize to full viewport
-    forceCanvasResize();
+    sceneEl.addEventListener('loaded', () => {
+      debugLog('Scene loaded event fired');
+      clearTimeout(sceneTimeout);
+      forceTransparentRenderer();
+      adoptARVideo();
 
-    fixCameraVideoElement();
-    setupDragGesture();
-    updateDebugPanel();
-    setTimeout(() => onProgress?.('scene-ready'), 500);
+      // CRITICAL: Force canvas resize to full viewport
+      forceCanvasResize();
+
+      fixCameraVideoElement();
+      setupDragGesture();
+      updateDebugPanel();
+      setTimeout(() => {
+        onProgress?.('scene-ready');
+        resolve();
+      }, 500);
+    });
   });
 }
 

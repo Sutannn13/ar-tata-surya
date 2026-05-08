@@ -72,8 +72,28 @@ function resetLoadingState(): void {
 
 function isSecureForCamera(): boolean {
   const hostname = window.location.hostname;
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]') return true;
-  return window.isSecureContext === true;
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+  const isSecure = window.isSecureContext === true;
+  const isHttps = window.location.protocol === 'https:';
+
+  // localhost is always considered secure for development
+  if (isLocalhost) {
+    console.log('[AR Security] localhost detected - treating as secure');
+    return true;
+  }
+
+  if (isSecure) {
+    console.log('[AR Security] Secure context detected');
+    return true;
+  }
+
+  if (isHttps) {
+    console.log('[AR Security] HTTPS protocol detected');
+    return true;
+  }
+
+  console.warn('[AR Security] Not secure:', { hostname, isSecure, isHttps });
+  return false;
 }
 
 function hasCameraSupport(): boolean {
@@ -195,8 +215,11 @@ async function openARPage(): Promise<void> {
     // STEP 3: Load A-Frame + AR.js, build scene
     setStepStatus('aframe', 'active');
     loadingStatus.textContent = 'Memuat A-Frame...';
+    console.log('[AR Startup] Starting initARScene...');
 
-    await initARScene((step) => {
+    // Add timeout wrapper for initARScene
+    const initARPromise = initARScene((step) => {
+      console.log('[AR Startup] Progress:', step);
       if (step === 'aframe-loaded') {
         setStepStatus('aframe', 'done');
         setStepStatus('arjs', 'active');
@@ -211,6 +234,13 @@ async function openARPage(): Promise<void> {
         resolveSceneReady?.();
       }
     });
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('AR initialization timed out after 30 seconds')), 30000);
+    });
+
+    await Promise.race([initARPromise, timeoutPromise]);
+    console.log('[AR Startup] initARScene completed');
 
     // Init UI controls
     initControls();
